@@ -1,0 +1,4 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/enrichment/service.ts", "src/enrichment/*.test.ts", "scripts/enrichListing.ts"]
+}

@@ -2,7 +2,7 @@ import { parseListing } from "../src/gmail/listings.ts"
 import { parseMessage } from "../src/gmail/message.ts";
 import { RAW_DIR } from "../src/gmail/mailbox.ts";
 import { client, db } from "../src/db/index.ts";
-import { listings } from "../src/db/schema.ts";
+import { listings } from "../src/db/schema/index.ts";
 import {sql} from 'drizzle-orm';
 
 import * as fs from 'node:fs'

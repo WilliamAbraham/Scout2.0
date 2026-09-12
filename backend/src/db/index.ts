@@ -4,7 +4,7 @@ import {drizzle} from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 
 import {REPO_ROOT} from '../paths.ts';
-import * as schema from './schema.ts';
+import * as schema from './schema/index.ts';
 
 // Resolve the root .env even when launched from the backend workspace.
 try {

@@ -27,5 +27,3 @@ npm-debug.log*
 out/
 next-env.d.ts
 .vercel
-
-backend/drizzle/

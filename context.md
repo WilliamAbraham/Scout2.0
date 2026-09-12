@@ -2,7 +2,18 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
-## Implemented in source
+## Latest upstream integration
+
+Pulled `origin/main` through `f9b1b76` on 2026-09-12 into `codex/dashboard-first-pass`. Resolved the `CLAUDE.md` conflict by retaining upstream backend guidance and local dashboard context.
+
+- Added the onboarding/search-profile design spec, broker enrichment service and research, and multi-tenant pipeline schema with RLS policies under `backend/src/db/schema/`.
+- Migration files are no longer ignored. Migrations were not applied to the live database during this pull.
+- `yarn test` now discovers backend tests and passed all 72 tests. `yarn lint` still fails because the root lint script is absent.
+- The public dashboard remains a local sample-data implementation. Live integration remains unverified.
+
+The review and dashboard verification sections below describe earlier snapshots; this integration status supersedes their statements about absent tenant schema, enrichment implementation, ignored migrations, and the missing test target.
+
+## Implemented in source at the earlier review
 
 - Root npm workspaces: `@scout/backend` and `@scout/frontend`, with a tracked `package-lock.json`.
 - `backend/src/gmail/auth.ts`: single-user, read-only Gmail OAuth using root `credentials.json` and `token.json`.
