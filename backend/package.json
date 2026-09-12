@@ -18,6 +18,8 @@
     "typecheck": "tsc",
     "worker": "node scripts/worker.ts",
     "watch-inbox": "node scripts/watchInbox.ts",
+    "outreach:reconsent": "node scripts/reconsentGmailSend.ts",
+    "outreach:send-test": "node scripts/sendTestEmail.ts",
     "test": "node --test \"src/**/*.test.ts\"",
     "enrich:agent": "node scripts/enrichAgent.ts"
   },

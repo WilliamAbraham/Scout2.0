@@ -4,13 +4,13 @@ Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source r
 
 ## Backend completion handoffs (2026-09-12)
 
-Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). These documents reflect a source audit, not a new live test. The worker still uses the older enrichment provider, refuses live sending, and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings, and restart-safe spending/delivery remain pending. Local uncommitted one-email runner/contact-adapter work must be coordinated with its author. No backend behavior changes or live sends were made for this documentation task. Validation: all 154 tests passed with Node type stripping enabled, documentation links and `git diff --check` passed, and `yarn lint` remained unavailable because no root lint script exists.
+Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). Cursor's Gmail sender, outbox, and dry-run boundary are implemented on `cursor/gmail-outreach`; live test mail is redirected to `williamja100@gmail.com` after `gmail.send` re-consent. The worker still uses the older enrichment provider and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings. Codex spend persistence and Claude thread-history wiring remain pending. See [outreach-delivery.md](docs/backend/outreach-delivery.md).
 
 ## Persisted worker pipeline (2026-09-12, branch `worktree-claude`)
 
 The worker now runs the whole alert path against Postgres in one cycle: Gmail alert sync → `listings`/`user_listings` upsert → deterministic match against `search_profiles` → `pursuits` row → broker enrichment → `contact_snapshot` or `needs_human: no_contact` → outreach turn. `backend/src/pipeline/postgresStore.ts` is the single persistence adapter (it implements the worker's `WorkerStore` and the alert stage's `AlertStore`); `backend/src/pipeline/match.ts` is the budget/bedroom hard filter; `backend/scripts/worker.ts` is the only entry point. `processAlerts.ts` and the file-based processed-id set were removed.
 
-- **Dry-run is the default and `--live` is refused** until Gmail sending exists: the open turn composes a real draft through OpenRouter and records it as a `draft_composed` event (once per pursuit), but no pursuit leaves `matched` and no `email_sent` event is written. Follow-ups are not scheduled in dry-run.
+- **Dry-run is the default.** `--live` requires `gmail.send` (see `npm run outreach:reconsent`) and sends through `outreach_outbox`; every live test recipient is rewritten to `williamja100@gmail.com`. Without `--live`, the open turn composes a draft and records `draft_composed` (once per pursuit), no Gmail send is called, and no pursuit leaves `matched`. Follow-ups are not scheduled in dry-run.
 - **Alerts are not marked processed if a listing failed before persistence**, so a database error retries next cycle. An enrichment failure after the pursuit exists is recorded as `needs_human: no_contact` with the error in the note, not retried.
 - Spend bounds: `SCOUT_ALERT_NEWER_THAN` (default `2d`) and `SCOUT_ALERTS_PER_CYCLE` (default 5) cap how many alerts enrich per cycle.
 - `SCOUT_OWNER_USER_ID` bootstraps a default `search_profiles` row for the demo owner. The live Supabase DB has a seeded owner `scout-demo@example.com` (`6d859f4e-413e-44f1-9279-3c92b15a7b06`) inserted directly into `auth.users` with no password; remove it once B's sign-up flow produces a real owner.
@@ -19,7 +19,7 @@ The worker now runs the whole alert path against Postgres in one cycle: Gmail al
 
 Verified live on 2026-09-12: two cycles ingested two alerts (nine listings, nine pursuits, all `no_contact` because enrichment found no verified email), a third cycle composed one draft for a pursuit seeded with an `example.com` contact, and a fourth cycle composed nothing new. `npm run typecheck` and all 135 backend tests pass; the backend `test` script now discovers every `src/**/*.test.ts`.
 
-Next for A: real `sendMail` via Gmail (needs the `gmail.send` scope and re-consent), per-user tokens from `gmail_tokens`, reply routing in `syncUser`, then flip the worker out of dry-run.
+Next for A: apply `0004_black_falcon` (outbox), persist full thread history and `mailboxEmail` on `loadTurnInput`, route broker replies in `syncUser`, then run an authorized `outreach:send-test` before `--live`. Per-user tokens from `gmail_tokens` remain later work.
 ## Latest verified broker discovery
 
 The revised OpenRouter agent independently identified **Fatma Kara / FIND Real Estate for 620 East 6th Street #9A** from the original address-only input on 2026-09-12. It generated one candidate StreetEasy URL, read the live page, validated its heading and available rent, and extracted the actual Listed by section. No expected name, manually injected source, or screenshot was supplied. Two paid calls (one hosted contact search) cost **$0.003407284, or 0.34¢**, in 7.882 seconds. A later offline replay verified rejection of an email tied to a conflicting brokerage. Personal email/phone remain unverified. See the [live result](docs/enrichment/fatma-live-result-2026-09-12.md).
@@ -81,6 +81,8 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run db:generate -w backend` | Generate Drizzle migration |
 | `npm run db:migrate -w backend` | Apply migrations to configured database |
 | `npm run worker -- --once` | One worker cycle: sync alerts, persist, enrich, compose drafts (dry-run) |
+| `npm run outreach:reconsent` | Browser re-consent to add `gmail.send` |
+| `npm run outreach:send-test` | Send one controlled test email to `williamja100@gmail.com` |
 
 Root `.env` supplies backend `DATABASE_URL`; `frontend/.env.local` supplies the two public Supabase variables documented in `frontend/.env.example`. Credentials, OAuth tokens, env files, and `data/` are ignored. Do not commit or print secrets or cached private mail.
 

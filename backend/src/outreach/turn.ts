@@ -1,5 +1,5 @@
+import {outreachRecipients} from './recipients.ts';
 import type {
-  ListingAgent,
   LlmToolCall,
   NeedsHumanReason,
   OutreachPorts,
@@ -83,16 +83,29 @@ function scheduleAfterFollowUp(at: Date, count: number): Date | null {
   return addDays(at, count === 0 ? FIRST_FOLLOW_UP_DAYS : SECOND_FOLLOW_UP_DAYS);
 }
 
-function recipients(agents: ListingAgent[]): {to: string[]; cc: string[]} | null {
-  const reachable = agents.filter((agent): agent is ListingAgent & {email: string} => Boolean(agent.email));
-  const primary = reachable.find(agent => agent.role === 'primary') ?? reachable[0];
-  if (!primary) {
+function recipients(pursuit: Pursuit): {to: string[]; cc: string[]} | null {
+  return outreachRecipients(pursuit.agents);
+}
+
+function isSelfSent(input: TurnInput): boolean {
+  const mailbox = input.mailboxEmail?.trim().toLowerCase();
+  const from = input.inbound?.from.toLowerCase() ?? '';
+  return Boolean(mailbox && from.includes(mailbox));
+}
+
+async function admitModelSpend(
+  input: TurnInput,
+  ports: OutreachPorts,
+  kind: 'draft' | 'reply',
+): Promise<TurnResult | null> {
+  if (!ports.reserveModelSpend) {
     return null;
   }
-  return {
-    to: [primary.email],
-    cc: reachable.filter(agent => agent !== primary).map(agent => agent.email),
-  };
+  const reserved = await ports.reserveModelSpend(kind, 0.01);
+  if (reserved.ok) {
+    return null;
+  }
+  return {actions: [{type: 'noop', reason: 'budget_exhausted'}], pursuit: snapshot(input.pursuit)};
 }
 
 function pursuitContext(pursuit: Pursuit): string {
@@ -131,25 +144,32 @@ async function composeAndSend(
   toCc: {to: string[]; cc: string[]},
   system: string,
   threadId: string | null,
-): Promise<{action: TurnAction; threadId: string}> {
+  actionKey: string,
+): Promise<{action: TurnAction; threadId: string} | {empty: true}> {
   const composed = await ports.llm.complete({
     system,
     user: pursuitContext(input.pursuit),
     tools: [],
   });
+  const body = composed.text?.trim() ?? '';
+  if (!body) {
+    return {empty: true};
+  }
   const message = {
     to: toCc.to,
     cc: toCc.cc,
     subject: `Tour request: ${input.pursuit.listing.address}`,
-    body: composed.text?.trim() ?? '',
+    body,
     threadId,
+    actionKey,
+    pursuitId: input.pursuit.id,
   };
   const sent = await ports.sendMail(message);
   return {action: {type: 'send', ...message}, threadId: sent.threadId};
 }
 
 async function openThread(input: TurnInput, ports: OutreachPorts): Promise<TurnResult> {
-  const toCc = recipients(input.pursuit.agents);
+  const toCc = recipients(input.pursuit);
   if (!toCc) {
     return {
       actions: [{type: 'escalate', reason: 'no_contact', detail: 'No agent email on the listing'}],
@@ -159,8 +179,15 @@ async function openThread(input: TurnInput, ports: OutreachPorts): Promise<TurnR
   if (input.sendsToday >= input.sendCap) {
     return {actions: [{type: 'noop', reason: 'send_cap'}], pursuit: snapshot(input.pursuit)};
   }
+  const blocked = await admitModelSpend(input, ports, 'draft');
+  if (blocked) {
+    return blocked;
+  }
 
-  const sent = await composeAndSend(input, ports, toCc, OPEN_SYSTEM, null);
+  const sent = await composeAndSend(input, ports, toCc, OPEN_SYSTEM, null, 'open');
+  if ('empty' in sent) {
+    return {actions: [{type: 'noop', reason: 'empty_draft'}], pursuit: snapshot(input.pursuit)};
+  }
   const at = now(input);
   return {
     actions: [sent.action],
@@ -175,15 +202,23 @@ async function openThread(input: TurnInput, ports: OutreachPorts): Promise<TurnR
 }
 
 async function followUpThread(input: TurnInput, ports: OutreachPorts): Promise<TurnResult> {
-  const toCc = recipients(input.pursuit.agents);
+  const toCc = recipients(input.pursuit);
   if (!toCc || !input.pursuit.threadId) {
     return {actions: [{type: 'noop', reason: 'missing_thread'}], pursuit: snapshot(input.pursuit)};
   }
   if (input.sendsToday >= input.sendCap) {
     return {actions: [{type: 'noop', reason: 'send_cap'}], pursuit: snapshot(input.pursuit)};
   }
+  const blocked = await admitModelSpend(input, ports, 'draft');
+  if (blocked) {
+    return blocked;
+  }
 
-  const sent = await composeAndSend(input, ports, toCc, FOLLOW_UP_SYSTEM, input.pursuit.threadId);
+  const actionKey = `follow_up:${input.pursuit.followUpCount + 1}`;
+  const sent = await composeAndSend(input, ports, toCc, FOLLOW_UP_SYSTEM, input.pursuit.threadId, actionKey);
+  if ('empty' in sent) {
+    return {actions: [{type: 'noop', reason: 'empty_draft'}], pursuit: snapshot(input.pursuit)};
+  }
   const at = now(input);
   const followUpCount = input.pursuit.followUpCount + 1;
   const nextFollowUpAt = scheduleAfterFollowUp(at, followUpCount);
@@ -210,13 +245,19 @@ async function sendReply(
   ports: OutreachPorts,
   body: string,
   toCc: {to: string[]; cc: string[]},
-): Promise<{action: TurnAction; threadId: string}> {
+): Promise<{action: TurnAction; threadId: string} | {empty: true}> {
+  const trimmed = body.trim();
+  if (!trimmed) {
+    return {empty: true};
+  }
   const message = {
     to: toCc.to,
     cc: toCc.cc,
     subject: `Tour request: ${input.pursuit.listing.address}`,
-    body,
+    body: trimmed,
     threadId: input.pursuit.threadId,
+    actionKey: `reply:${input.inbound?.id ?? 'unknown'}`,
+    pursuitId: input.pursuit.id,
   };
   const sent = await ports.sendMail(message);
   return {action: {type: 'send', ...message}, threadId: sent.threadId};
@@ -255,20 +296,25 @@ async function applyTool(
   }
 
   if (call.name === 'book_tour') {
-    const start = str(call.arguments.start);
-    const end = str(call.arguments.end);
-    await ports.bookTour({start, end, summary: `Tour: ${input.pursuit.listing.address}`});
     return {
-      actions: [{type: 'book_tour', start, end}],
-      pursuit: {...pursuit, stage: 'tour_scheduled', nextFollowUpAt: null},
+      actions: [{
+        type: 'escalate',
+        reason: 'unanswerable_question',
+        detail: 'Calendar booking is not available yet',
+      }],
+      pursuit: {...pursuit, needsHumanReason: 'unanswerable_question', nextFollowUpAt: null},
       observation: null,
-      stop: false,
+      stop: true,
     };
   }
 
   if (call.name === 'send_reply') {
     if (input.sendsToday >= input.sendCap) {
       return {actions: [{type: 'noop', reason: 'send_cap'}], pursuit, observation: null, stop: true};
+    }
+    const blocked = await admitModelSpend(input, ports, 'reply');
+    if (blocked) {
+      return {actions: blocked.actions, pursuit, observation: null, stop: true};
     }
     if (!toCc) {
       return {
@@ -279,6 +325,9 @@ async function applyTool(
       };
     }
     const sent = await sendReply(input, ports, str(call.arguments.body), toCc);
+    if ('empty' in sent) {
+      return {actions: [{type: 'noop', reason: 'empty_draft'}], pursuit, observation: null, stop: true};
+    }
     return {
       actions: [sent.action],
       pursuit: {...pursuit, threadId: sent.threadId, nextFollowUpAt: null},
@@ -288,19 +337,15 @@ async function applyTool(
   }
 
   if (call.name === 'send_packet') {
-    if (input.sendsToday >= input.sendCap) {
-      return {actions: [{type: 'noop', reason: 'send_cap'}], pursuit, observation: null, stop: true};
-    }
-    const threadId = input.pursuit.threadId;
-    if (!threadId) {
-      return {actions: [], pursuit, observation: null, stop: false};
-    }
-    await ports.sendPacket({threadId});
     return {
-      actions: [{type: 'send_packet'}],
-      pursuit: {...pursuit, stage: 'applied', nextFollowUpAt: null},
+      actions: [{
+        type: 'escalate',
+        reason: 'missing_document',
+        detail: 'Document release is not available yet',
+      }],
+      pursuit: {...pursuit, needsHumanReason: 'missing_document', nextFollowUpAt: null},
       observation: null,
-      stop: false,
+      stop: true,
     };
   }
 
@@ -347,7 +392,7 @@ async function handleReply(input: TurnInput, ports: OutreachPorts): Promise<Turn
     return {actions: [{type: 'noop', reason: 'unhandled'}], pursuit: snapshot(input.pursuit)};
   }
 
-  const toCc = recipients(input.pursuit.agents);
+  const toCc = recipients(input.pursuit);
   const actions: TurnAction[] = [];
   let pursuit = snapshot(input.pursuit);
   const observations: string[] = [];
@@ -398,8 +443,17 @@ export async function runTurn(input: TurnInput, ports: OutreachPorts): Promise<T
   if (input.alreadyProcessed) {
     return {actions: [{type: 'noop', reason: 'already_processed'}], pursuit: snapshot(input.pursuit)};
   }
+  if (input.paused) {
+    return {actions: [{type: 'noop', reason: 'paused'}], pursuit: snapshot(input.pursuit)};
+  }
+  if (input.pursuit.stage === 'dead') {
+    return {actions: [{type: 'noop', reason: 'stopped'}], pursuit: snapshot(input.pursuit)};
+  }
   if (input.pursuit.needsHumanReason) {
     return {actions: [{type: 'noop', reason: 'waiting_for_human'}], pursuit: snapshot(input.pursuit)};
+  }
+  if (input.trigger === 'reply' && isSelfSent(input)) {
+    return {actions: [{type: 'noop', reason: 'self_sent'}], pursuit: snapshot(input.pursuit)};
   }
 
   switch (input.trigger) {

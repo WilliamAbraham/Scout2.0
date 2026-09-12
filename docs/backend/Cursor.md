@@ -8,7 +8,9 @@ The split is [Claude: ingestion and worker](Claude.md), [Codex: enrichment and c
 
 ## Starting point
 
-`backend/src/outreach/turn.ts` already composes opening messages and follow-ups and interprets replies. `ports.ts` returns fabricated Gmail IDs by default. The worker refuses `--live`; Gmail OAuth only requests read access. Sending currently precedes persistence, so replacing the stub alone would allow duplicate sends after a crash. The store supplies no prior conversation history.
+Implemented on `cursor/gmail-outreach` (2026-09-12). `turn.ts` composes opens/follow-ups/replies. Live `sendMail` goes through a Gmail sender plus `outreach_outbox`. Dry-run is an explicit no-send port. Existing `token.json` is still read-only until `npm run outreach:reconsent`. Claude still needs to persist full thread history and `mailboxEmail` on `loadTurnInput`. Calendar and document tools escalate; they do not claim success.
+
+Test sends are redirected to `williamja100@gmail.com`. See [outreach-delivery.md](outreach-delivery.md).
 
 ## Work
 
@@ -35,4 +37,8 @@ Deliver the sender contract, outbox state/action identity, reconciliation behavi
 - Pause, stopped pursuit, duplicate recipients, daily limits, and exhausted model budget are enforced.
 - Follow-ups stop after replies or closure, and unavailable booking/document actions cannot produce success claims.
 
-Use a feature branch and PR, update outreach setup and verified status, and run repository tests plus relevant TypeScript checks. Root lint is presently unavailable. This assignment authorizes implementation and offline tests; it does not itself authorize sending development emails to real brokers. Use the owner's approved controlled recipient for live verification.
+Use a feature branch and PR, update outreach setup and verified status, and run repository tests plus relevant TypeScript checks. Root lint is presently unavailable. This assignment authorizes implementation and offline tests; it does not itself authorize sending development emails to real brokers. Use the owner's approved controlled recipient (`williamja100@gmail.com`) for live verification.
+
+## Verified status (2026-09-12)
+
+Offline: recipient/outbox/sender/turn/port tests cover dry-run no-send, replay-without-resend, uncertain-timeout no-retry, empty drafts, pause/stop, self-sent ignore, booking/docs escalation, and the controlled-recipient redirect. Live Gmail send was not run in this change; it requires `outreach:reconsent` and `outreach:send-test`. Root `yarn lint` is still unavailable.

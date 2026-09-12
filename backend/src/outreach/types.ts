@@ -58,6 +58,8 @@ export type TurnInput = {
   sendsToday: number;
   sendCap: number;
   now?: Date | undefined;
+  paused?: boolean | undefined;
+  mailboxEmail?: string | null | undefined;
 };
 
 export type ToolName =
@@ -93,6 +95,9 @@ export type SendMailInput = {
   subject: string;
   body: string;
   threadId: string | null;
+  /** Stable outbox identity, e.g. `open`, `follow_up:1`, `reply:<inboundId>`. */
+  actionKey?: string | undefined;
+  pursuitId?: string | undefined;
 };
 
 export type OutreachPorts = {
@@ -101,6 +106,7 @@ export type OutreachPorts = {
   bookTour(event: {start: string; end: string; summary: string}): Promise<{eventId: string}>;
   sendMail(message: SendMailInput): Promise<{threadId: string; messageId: string}>;
   sendPacket(input: {threadId: string}): Promise<void>;
+  reserveModelSpend?(kind: 'draft' | 'reply', estimateUsd: number): Promise<{ok: boolean}>;
 };
 
 export type TurnAction =

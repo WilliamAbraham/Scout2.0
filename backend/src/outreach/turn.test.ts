@@ -239,6 +239,96 @@ test('reply escalate portal_link sets needs_human and does not send', async () =
   assert.equal(rec.sent.length, 0);
 });
 
+test('opening with an empty draft does not send', async () => {
+  const rec = recordingPorts(async () => ({text: '   ', toolCalls: []}));
+  const result = await runTurn(input(), rec.ports);
+
+  assert.deepEqual(result.actions, [{type: 'noop', reason: 'empty_draft'}]);
+  assert.equal(rec.sent.length, 0);
+  assert.equal(result.pursuit.stage, 'matched');
+});
+
+test('paused owner and stopped pursuit do not send', async () => {
+  const paused = recordingPorts(async () => ({text: 'Hi', toolCalls: []}));
+  const pausedResult = await runTurn(input({paused: true}), paused.ports);
+  assert.deepEqual(pausedResult.actions, [{type: 'noop', reason: 'paused'}]);
+  assert.equal(paused.sent.length, 0);
+
+  const stopped = recordingPorts();
+  const stoppedResult = await runTurn(input({
+    trigger: 'follow_up',
+    pursuit: contacted({stage: 'dead'}),
+  }), stopped.ports);
+  assert.deepEqual(stoppedResult.actions, [{type: 'noop', reason: 'stopped'}]);
+  assert.equal(stopped.sent.length, 0);
+});
+
+test('self-sent inbound is ignored as a reply trigger', async () => {
+  const rec = recordingPorts();
+  const result = await runTurn(input({
+    trigger: 'reply',
+    pursuit: contacted(),
+    mailboxEmail: 'me@example.com',
+    inbound: {
+      id: 'msg-self',
+      from: 'Me <me@example.com>',
+      to: ['ava@broker.example'],
+      cc: [],
+      date: '2026-09-12T12:00:00Z',
+      body: 'Can we tour this week after 5pm?',
+    },
+  }), rec.ports);
+
+  assert.deepEqual(result.actions, [{type: 'noop', reason: 'self_sent'}]);
+  assert.equal(rec.llmCalls, 0);
+  assert.equal(rec.sent.length, 0);
+});
+
+test('book_tour and send_packet escalate instead of claiming success', async () => {
+  const rec = recordingPorts(async () => ({
+    toolCalls: [
+      {name: 'book_tour', arguments: {start: '2026-09-13T18:00:00Z', end: '2026-09-13T18:30:00Z'}},
+    ],
+  }));
+  const booked = await runTurn(input({
+    trigger: 'reply',
+    pursuit: contacted(),
+    inbound: inbound('Tuesday at 6?'),
+  }), rec.ports);
+  assert.equal(booked.pursuit.needsHumanReason, 'unanswerable_question');
+  assert.equal(booked.pursuit.stage, 'contacted');
+  assert.equal(rec.booked.length, 0);
+
+  const packetRec = recordingPorts(async () => ({
+    toolCalls: [{name: 'send_packet', arguments: {}}],
+  }));
+  const packet = await runTurn(input({
+    trigger: 'reply',
+    pursuit: contacted(),
+    inbound: inbound('Please send your docs'),
+  }), packetRec.ports);
+  assert.equal(packet.pursuit.needsHumanReason, 'missing_document');
+  assert.equal(packetRec.packets.length, 0);
+});
+
+test('opening send is tagged with a stable outbox action key', async () => {
+  const rec = recordingPorts(async () => ({
+    text: 'Hi Ava — can we tour 118 Mulberry this week after 5pm?',
+    toolCalls: [],
+  }));
+  await runTurn(input(), rec.ports);
+  assert.equal(rec.sent[0]?.actionKey, 'open');
+  assert.equal(rec.sent[0]?.pursuitId, 'pursuit-1');
+});
+
+test('exhausted model budget does not send', async () => {
+  const rec = recordingPorts(async () => ({text: 'Hi', toolCalls: []}));
+  rec.ports.reserveModelSpend = async () => ({ok: false});
+  const result = await runTurn(input(), rec.ports);
+  assert.deepEqual(result.actions, [{type: 'noop', reason: 'budget_exhausted'}]);
+  assert.equal(rec.sent.length, 0);
+});
+
 test('mark_dead ends the pursuit without mailing', async () => {
   const rec = recordingPorts(async () => ({
     toolCalls: [{name: 'mark_dead', arguments: {reason: 'Already rented'}}],

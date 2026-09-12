@@ -19,6 +19,8 @@
     "enrich": "node backend/scripts/enrichListing.ts",
     "worker": "npm run worker -w backend",
     "watch-inbox": "npm run watch-inbox -w backend",
-    "enrich:agent": "node backend/scripts/enrichAgent.ts"
+    "enrich:agent": "node backend/scripts/enrichAgent.ts",
+    "outreach:reconsent": "npm run outreach:reconsent -w backend",
+    "outreach:send-test": "npm run outreach:send-test -w backend"
   }
 }

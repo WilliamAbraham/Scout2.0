@@ -14,6 +14,7 @@ import {
   gmailTokens,
   listings,
   needsHumanReason,
+  outreachOutbox,
   processedMessages,
   pursuitEvents,
   pursuitStage,
@@ -85,7 +86,7 @@ test('tables holding secrets are unreachable through PostgREST', () => {
   // browser bundle. RLS enabled with zero policies denies every request that
   // arrives that way, while the worker connects as table owner and bypasses
   // it. A policy added to either table below would expose refresh tokens.
-  for (const table of [gmailTokens, processedMessages]) {
+  for (const table of [gmailTokens, processedMessages, outreachOutbox]) {
     const config = getTableConfig(table);
     assert.equal(config.enableRLS, true, `${config.name} must enable RLS`);
     assert.equal(config.policies.length, 0,

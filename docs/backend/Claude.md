@@ -26,7 +26,7 @@ The split is **Claude: ingestion and orchestration**, [Codex: enrichment and cos
 
 Own `backend/scripts/worker.ts`, Gmail discovery/parsing, `backend/src/pipeline/`, the worker loop in `backend/src/outreach/worker.ts`, and operational documentation/configuration. Coordinate shared schema exports, migration numbering, and root package scripts.
 
-Codex owns enrichment internals and its cost ledger. Cursor owns sender/outbox implementation and outreach turns. Agree the typed enrichment outcome, mailbox message envelope, and durable send interface before wiring them. Cursor supplies outbox migration changes; integrate them without inventing a second delivery queue.
+Codex owns enrichment internals and its cost ledger. Cursor owns sender/outbox implementation and outreach turns. The send/outbox contract is in [outreach-delivery.md](outreach-delivery.md) (`0004_black_falcon.sql`, `PostgresOutbox`). Agree the typed enrichment outcome and mailbox message envelope before wiring them. Integrate the outbox without inventing a second delivery queue. Pass `mailboxEmail` and persisted thread history into `loadTurnInput`.
 
 ## Done when
 

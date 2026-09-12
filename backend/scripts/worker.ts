@@ -3,8 +3,11 @@ import process from 'node:process';
 
 import {client, db} from '../src/db/index.ts';
 import {BrokerEnrichment} from '../src/enrichment/service.ts';
-import {getGmailClient} from '../src/gmail/auth.ts';
+import {getGmailClient, getGmailSendClient} from '../src/gmail/auth.ts';
+import type {gmail_v1} from 'googleapis';
+import {assertLiveSendReady, createLiveSendMail} from '../src/outreach/delivery.ts';
 import {createOutreachPorts} from '../src/outreach/ports.ts';
+import {PostgresOutbox} from '../src/outreach/postgresOutbox.ts';
 import {runWorkerCycle} from '../src/outreach/worker.ts';
 import {processStreetEasyAlert} from '../src/pipeline/alert.ts';
 import type {AlertPipelineDeps} from '../src/pipeline/alert.ts';
@@ -18,15 +21,16 @@ import {DATA_DIR} from '../src/paths.ts';
  *
  *   npm run worker -- --once            # one cycle, then exit
  *   npm run worker                      # poll every WORKER_POLL_MS (default 5 min)
- *   npm run worker -- --once --live     # persist real sends (requires a real Gmail sender)
+ *   npm run worker -- --once --live     # real Gmail sends, redirected to the controlled test recipient
  *
  * Env: DATABASE_URL, OPENROUTER_API_KEY, SCOUT_OWNER_USER_ID (bootstraps the
  * demo owner's profile), optional TAVILY_API_KEY / FIRECRAWL_API_KEY,
  * SCOUT_ALERT_NEWER_THAN (Gmail relative age, default 2d), SCOUT_ALERTS_PER_CYCLE
  * (default 5), OPENROUTER_MODEL, WORKER_POLL_MS.
  *
- * Dry-run is the default until Gmail sending exists: drafts are composed and
- * recorded as `draft_composed` events, but no pursuit advances to `contacted`.
+ * Dry-run is the default: drafts are composed and recorded as `draft_composed`
+ * events, with zero Gmail send calls. `--live` requires gmail.send re-consent
+ * and redirects every test send to williamja100@gmail.com.
  */
 const POLL_MS = Number(process.env.WORKER_POLL_MS ?? 300_000);
 const once = process.argv.includes('--once');
@@ -44,9 +48,11 @@ function requireEnv(name: string): string {
 const openRouterApiKey = requireEnv('OPENROUTER_API_KEY');
 
 if (live) {
-  // Gmail sending lands with the outreach milestone; refuse to record fake sends.
-  throw new Error('--live is not available yet: sendMail is still a stub, so real persistence would record sends that never happened');
+  await assertLiveSendReady();
 }
+
+const outbox = new PostgresOutbox(db);
+let sendClient: Promise<gmail_v1.Gmail> | null = null;
 
 const store = new PostgresStore({
   db,
@@ -76,10 +82,18 @@ async function tick() {
   }
 
   const report = await runWorkerCycle(store, {
-    createPorts: () => createOutreachPorts({
+    createPorts: userId => createOutreachPorts({
       openRouterApiKey,
+      mode: live ? 'live' : 'dry-run',
       ...(process.env.OPENROUTER_MODEL ? {model: process.env.OPENROUTER_MODEL} : {}),
       ...(process.env.OPENROUTER_APP_URL ? {appUrl: process.env.OPENROUTER_APP_URL} : {}),
+      ...(live ? {
+        sendMail: async message => createLiveSendMail({
+          outbox,
+          userId,
+          gmail: await (sendClient ??= getGmailSendClient()),
+        })(message),
+      } : {}),
     }),
     processAlert: async (userId, message) => {
       const result = await processStreetEasyAlert(userId, {

@@ -31,6 +31,8 @@ npm run inspect -w backend -- <messageId>  # dump one raw message (add --full fo
 npm run survey -w backend -- --offline     # shape/stats report across the cached corpus
 npm run probe -w backend -- <url> <selector...>  # inspect live DOM via Playwright (HEADLESS=0 to watch)
 npm run worker -w backend -- --once        # one full cycle: Gmail alerts -> Postgres -> enrich -> draft (dry-run; see context.md)
+npm run outreach:reconsent                 # add gmail.send to the local OAuth token
+npm run outreach:send-test                 # send one test email to williamja100@gmail.com
 node --experimental-strip-types backend/scripts/importListings.ts   # parse cached mail -> upsert into `listings`
 ```
 
