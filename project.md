@@ -16,7 +16,9 @@ The user clarified that this is a hackathon project. Optimize the first mileston
 
 An account owner connects Gmail and Calendar, creates StreetEasy or Apartments.com alerts themselves, and supplies a search profile. Scout ingests alerts, matches listings, resolves contacts, requests tours, handles replies, schedules confirmed tours, and sends application materials within the owner's authorization.
 
-The intended dashboard has a listings feed, a prominent **Needs you** queue, and an application tracker. The first frontend iteration now implements a sample listings feed, Needs you confirmation/undo, selected listing brief, and read-only tour/activity panels at `/`; the application tracker and live pipeline integration remain planned. Proposed extras include natural-language filtering and roommate invitations with shared listings and a shared application packet.
+The implemented demo dashboard is intentionally minimal: search status, a **Needs you** queue for actual blockers, a next-tour reminder, and a compact Active/All apartment list. Apartment facts, fit reasons, unknowns, sample conversations, and stop/resume controls appear in a detail panel opened on demand. Preferences are a separate read-only sample view. The application tracker and live pipeline integration remain planned.
+
+The user accepted this UX direction after reviewing [progressive disclosure guidance](https://www.nngroup.com/articles/progressive-disclosure/), [Google PAIR's transparency/control patterns](https://pair.withgoogle.com/guidebook-v2/patterns), and [Zillow's 2025 renter research](https://www.zillow.com/research/renters-housing-trends-report-2025-35647/). This is a product design decision informed by external research, not a completed study with Scout users. Routine work within the owner's authorization should proceed without making the user approve every listing. The main screen prioritizes decisions and upcoming commitments; raw activity, technical stages, and uncalibrated match scores do not need permanent space.
 
 The proposed loop is:
 

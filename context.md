@@ -12,7 +12,7 @@ Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source r
 - `backend/scripts/importListings.ts`: imports cached mail. On conflict it only fills missing brokerage; it does not refresh price or advance observation timestamps. This matters for matching and contact recency.
 - `backend/src/db/index.ts`: root `.env` database connection, with prepared statements disabled for the pooler.
 - `backend/src/index.ts`: HTTP `/health` only; default port 3000, overridden to 4000 by `dev:api`.
-- Frontend: public `/` now renders a Scout sample dashboard with search, filters, price/match sorting, saved listings, expandable details, selected listing brief, and a confirm/undo demo request. Sample preferences, tours, and activity are read-only. State is in memory. Auth/session clients, `proxy.ts`, auth pages, and protected route remain; unused starter assets still exist.
+- Frontend: public `/` renders a minimal sample dashboard: status/pause, Needs you with confirm/alternate-date/undo, next tour, and Active/All apartments. A native modal detail panel shows fit, unknowns, conversation, and stop/resume controls. Preferences are read-only in a separate modal view. No permanent sidebar/inspector/activity feed, match scores, saved listings, search, or sort controls. State is in memory. Auth/session clients, `proxy.ts`, auth pages, and protected route remain; unused starter assets still exist.
 - Enrichment browser/probe helpers exist. `backend/src/enrichment/names.ts` is a comment-only plan, not a working enrichment pipeline.
 
 No implementation was found for multi-user Google OAuth, calendar integration, sending mail, matching, pursuits, application storage/sharing, roommate membership, natural-language search, or the proposed worker. No live service or deployment was tested.
@@ -59,18 +59,20 @@ Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated 
 
 ## Dashboard iteration verification
 
-Reference: read-only inspection of the local `agentAI/src/app/page.tsx` and `globals.css`. Reused its muted green visual direction, queue/status vocabulary, and selected-listing brief pattern in Scout's existing Next.js/Tailwind stack. Did not port its backend, Google Maps, or outreach integrations.
+Reference: read-only inspection of the local `agentAI/src/app/page.tsx` and `globals.css`. The first iteration reused its muted green visual direction and queue/status vocabulary. The accepted UX revision keeps the visual direction but uses one compact page and an on-demand detail panel. Did not port its backend, Google Maps, or outreach integrations.
 
 - `npm ci`: completed with the tracked lockfile unchanged.
 - `npm run build -w frontend`: passed.
 - `npm run typecheck -w frontend`: passed.
 - Targeted ESLint on dashboard, root page, and root layout: passed.
 - Full frontend lint: runs after the flat-config fix, with the two existing violations listed above. Root `yarn lint` and `yarn test` still fail for the documented missing script/test file.
-- Browser: verified saving and saved filtering, neighborhood search, empty results, sort toggle, listing expansion/inspector update, confirmation/undo, and reset on refresh.
-- Visual inspection: desktop and 375px mobile. Document width matched the viewport at 375px and 812px landscape. OS text scaling and full keyboard traversal were not exercised.
+- Browser, minimal UX revision: verified alternate-date submission, response undo, pause, native detail modal open/close and Escape focus return, stop/removal from Active, All showing stopped pursuits, and restoring a stopped pursuit. The former save/search/sort controls were removed.
+- Visual inspection: desktop and 375px mobile detail panel; mobile document width matched 375px. OS text scaling and full keyboard traversal were not exercised for this revision. The native dialog supplies modal focus containment.
 - No live auth, persistence, ingestion, outreach, or calendar integration tested. The public homepage contains only synthetic fixtures; keep it that way until authenticated live-data integration is designed.
 
 Delivery: committed on `codex/dashboard-first-pass`. Push to `origin` returned HTTP 403: signed-in GitHub account `ktpeii` lacks write access to `WilliamAbraham/Scout2.0`. The branch is local only and no PR was created; push and PR remain pending repository access.
+
+The user accepted the research-backed minimal direction: routine outreach should not require approval of every apartment. Keep only actual blockers in Needs you, surface upcoming commitments, and reveal supporting detail on demand. Match reasons and unknowns replace uncalibrated percentages. Photos and source URLs remain unavailable for synthetic fixtures.
 
 Next dashboard work: iterate with user feedback, agree the pursuit/command contract with pipeline owner A, then replace fixtures with authorized persisted results. Map view and command submission are not implemented.
 

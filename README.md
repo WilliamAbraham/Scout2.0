@@ -11,9 +11,11 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 
 ## Dashboard preview
 
-Open `/` after starting the frontend. The first dashboard iteration uses the local `agentAI` project as a visual/interaction reference: muted green surfaces, queue filters, status badges, and a selected listing brief. Search, sort, save, expand listing details, and confirm/undo the sample move-in request.
+Open `/` after starting the frontend. The minimal dashboard shows search status, an actionable **Needs you** request, a next-tour reminder, and an **Active / All** apartment list. Click an apartment to open its detail panel with fit reasons, unknowns, sample conversation, and stop/resume controls. Search preferences open separately as a read-only sample profile.
 
-All displayed listings, scores, tours, and activity are fictional demo fixtures. Changes live in memory and reset on refresh. No backend commands or external messages are submitted. Existing auth routes remain available; live data integration awaits the shared pursuit/command contract.
+Confirm the sample move-in date or suggest another date, undo the response, pause/resume the demo search, and stop/restore individual pursuits. The sidebar, metrics, match percentages, saved/search/sort controls, and permanent detail/activity panels were removed following the UX review.
+
+All apartments and activity are fictional fixtures. Building icons stand in for unavailable photos; no original listing links are fabricated. Changes live in memory and reset on refresh. No backend commands or external messages are submitted. Existing auth routes remain available; live data integration awaits the shared pursuit/command contract.
 
 ## Local development
 
