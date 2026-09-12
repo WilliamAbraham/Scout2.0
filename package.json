@@ -19,6 +19,7 @@
     "enrich": "node backend/scripts/enrichListing.ts",
     "worker": "npm run worker -w backend",
     "enrich:agent": "node backend/scripts/enrichAgent.ts",
-    "worker:status": "npm run worker:status -w backend"
+    "worker:status": "npm run worker:status -w backend",
+    "alert": "npm run alert -w backend --"
   }
 }

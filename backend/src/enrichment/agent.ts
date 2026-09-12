@@ -8,6 +8,7 @@ import path from 'node:path';
 import {resolveDirect} from './sources.ts';
 import type {ContactRoute} from './sources.ts';
 import {EnrichmentBudget} from './spend.ts';
+import {findAgentEmail} from './agentContacts.ts';
 import {canonicalListingUrl, candidateListingUrl, readListingPage} from './listingPage.ts';
 import type {ListingPage} from './listingPage.ts';
 import {normalizeAddress, normalizeUnit} from './service.ts';
@@ -76,11 +77,15 @@ export interface AgentOptions {
   cacheDir?: string;
   refresh?: boolean;
   direct?: boolean;
+  /** Enables the direct name + brokerage email lookup before the paid contact stage. */
+  tavilyKey?: string;
+  /** Renders brokerage pages that block plain HTTP during that lookup. */
+  firecrawlKey?: string;
 }
 
 export const AGENT_MODEL = 'openai/gpt-4.1-mini';
 export const REQUEST_ALLOWANCE_USD = 0.02;
-const CACHE_VERSION = 'listing-evidence-v3';
+const CACHE_VERSION = 'listing-evidence-v4';
 const inFlight = new Map<string, Promise<AgentEnrichmentResult>>();
 
 const rules = `You research public business contacts for NYC rental listings. Use supplied evidence and the available search tool, not memory.
@@ -171,7 +176,7 @@ export async function enrichWithAgent(input: EmailListing, options: AgentOptions
   // Never reuse a different unit, price, brokerage, model, or screenshot's result.
   const key = createHash('sha256').update(JSON.stringify({version: CACHE_VERSION, input,
     model: options.model ?? AGENT_MODEL, engine: options.searchEngine ?? 'parallel', direct: options.direct !== false,
-    maxToolCalls: options.maxToolCalls ?? 2, image: options.listingImage ?? null})).digest('hex');
+    maxToolCalls: options.maxToolCalls ?? 2, image: options.listingImage ?? null, tavily: Boolean(options.tavilyKey)})).digest('hex');
   const file = options.cacheDir ? path.join(options.cacheDir, `${key}.json`) : undefined;
   if (file && !options.refresh) {
     try {
@@ -347,6 +352,25 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
     }
     if (!result.agents.some(a => a.attributionStatus !== 'needs_review')) result.listingStatus = 'unresolved';
   }
+  // Direct lookup first: search the agent's name with the brokerage and read
+  // the email off the closest page. No model call; when every supported broker
+  // resolves this way the paid contact stage is skipped.
+  const supported = () => result.agents.filter(a => a.attributionStatus !== 'needs_review');
+  if (options.tavilyKey && supported().length > 0) {
+    for (const agent of supported()) {
+      if (agent.email) continue;
+      const lookup = await findAgentEmail({name: agent.name, brokerage: agent.brokerage || input.brokerage}, {
+        apiKey: options.tavilyKey, ...(options.firecrawlKey ? {firecrawlKey: options.firecrawlKey} : {}), ...(options.log ? {log: options.log} : {}),
+      });
+      agent.notes.push(lookup.note);
+      if (lookup.email) agent.email = lookup.email;
+    }
+    if (supported().every(a => a.email)) {
+      result.execution = discoveryIncomplete ? 'partial' : 'completed';
+      result.notes.push('Every listing broker resolved by name + brokerage lookup; paid contact stage skipped.');
+      return result;
+    }
+  }
   if (!result.agents.length && result.directContacts.some(c => c.email || c.phone)) {
     result.execution = discoveryIncomplete ? 'partial' : 'completed';
     result.notes.push('Reused direct brokerage contacts; no paid contact-stage request. Broker roster remains limited to discovered listing evidence.');
@@ -359,7 +383,7 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
       const agent = result.agents.find(a => a.id === person.id);
       if (!agent || agent.attributionStatus === 'needs_review') {result.notes.push(`Ignored unknown or unsupported contact-stage ID: ${person.id}`); continue;}
       agent.notes.push(...person.notes);
-      agent.email = validPersonalContact(person.email, 'email', agent, contacts.citations);
+      agent.email ??= validPersonalContact(person.email, 'email', agent, contacts.citations);
       agent.phone = validPersonalContact(person.phone, 'phone', agent, contacts.citations);
     }
     result.officeContacts.push(...contacts.data.officeContacts.map(office => ({...office,

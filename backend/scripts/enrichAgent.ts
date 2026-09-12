@@ -46,6 +46,8 @@ await mkdir(output, {recursive: true});
 const results = [];
 for (const [index, input] of inputs.entries()) {
   const result = await enrichWithAgent(input, {apiKey, model, searchEngine, log: console.error,
+    ...(process.env.TAVILY_API_KEY ? {tavilyKey: process.env.TAVILY_API_KEY} : {}),
+    ...(process.env.FIRECRAWL_API_KEY ? {firecrawlKey: process.env.FIRECRAWL_API_KEY} : {}),
     budget, refresh, cacheDir: path.join(DATA_DIR, 'enrichment', 'agent-cache'),
     ...(listingImage ? {listingImage} : {}),
     save: async (stage, checkpoint, raw) => {

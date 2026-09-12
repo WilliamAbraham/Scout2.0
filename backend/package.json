@@ -19,7 +19,8 @@
     "worker": "node scripts/worker.ts",
     "test": "node --test \"src/**/*.test.ts\"",
     "enrich:agent": "node scripts/enrichAgent.ts",
-    "worker:status": "node scripts/worker.ts --status"
+    "worker:status": "node scripts/worker.ts --status",
+    "alert": "node scripts/runAlert.ts"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
