@@ -150,7 +150,7 @@
   line-height: 1.8;
   font-size: 12px;
 }
-.searchProfile button {
+.searchProfile a {
   display: flex;
   align-items: center;
   gap: 7px;
@@ -986,29 +986,6 @@
 .notice:empty {
   display: none;
 }
-.preferences {
-  width: min(640px, calc(100% - 36px));
-  max-height: calc(100dvh - 36px);
-  overflow-y: auto;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 24px;
-  color: var(--ink);
-  background: var(--surface);
-}
-.preferences::backdrop {
-  background: #12231855;
-}
-.preferences header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-.preferences h2 {
-  font-size: 18px;
-  font-weight: 500;
-}
 @media (min-width: 1700px) {
   .window {
     grid-template-columns: 216px minmax(0, 1fr) 400px;
@@ -1228,9 +1205,6 @@
   .commandError button {
     min-height: 44px;
   }
-  .preferences {
-    font-size: 14px;
-  }
 }
 @media (max-width: 540px) {
   .navigation {
@@ -1369,7 +1343,8 @@
   .mobileAccount span {
     margin-right: auto;
   }
-  .mobileAccount button {
+  .mobileAccount button,
+  .mobileAccount a {
     display: flex;
     align-items: center;
     justify-content: center;

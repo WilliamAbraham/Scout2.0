@@ -2,6 +2,16 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Search preferences page — 2026-09-12
+
+Implemented `/preferences` on `codex/more-enrichment-on-frontend`. Inbox navigation and the no-fitting-slot shortcut now lead to the page, replacing the dialog. The page retains Scout’s existing shell, separates Search filters / Apartment preferences / Tour availability, and adds suggestion toggles, custom lists and a live summary.
+
+- Source audit confirms that rent, bedroom and bathroom bounds filter newly evaluated listings. Missing room counts can pass; no review gate is created. Neighborhoods, must-haves, dealbreakers and prose go to outreach context rather than automatic matching. Existing evaluated matches and StreetEasy alerts are unchanged by a save. Blank availability is sent as flexible; tour windows do not enforce booking constraints.
+- Signed-out users can edit/check a sample without a database write. Only the exact public `/preferences` route is exempted from the proxy redirect; `/dashboard` remains protected and every save validates the session. Failed profile reads block editing.
+- Save execution now checks the returned owner row and catches uncertain failures; client errors retain all drafts, including time windows. Editable-field whitelisting preserves pause, learned answers and send caps. Profile saves remain last-save-wins. List entries are deduplicated case-insensitively.
+- Verified: all 191 tests passed (154 backend, 37 frontend), including eight profile parser/authorization/receipt cases. Both workspace typechecks, frontend production build and targeted ESLint passed. Root `yarn lint` remains absent; full frontend lint retains its previously documented starter errors.
+- Browser QA: 1440px desktop and 375px mobile; no horizontal overflow, 16px mobile inputs, studio/budget summary updates, selected suggestions, custom text, flexible availability, invalid rent and time ranges, linked/focused inline errors, retained edits and sample-check feedback. Anonymous `/dashboard` still redirects to login; the browser was left at `/preferences` with the viewport override reset. No authenticated live profile writes, RLS checks, worker commands or deployment were performed.
+
 ## Final upstream reconciliation — 2026-09-12
 
 Integrated `origin/main` at `0a888a6` into `codex/more-enrichment-on-frontend` for [PR #9](https://github.com/WilliamAbraham/Scout2.0/pull/9). README/context conflicts preserve the implemented frontend contract alongside the new backend assignments and broker-discovery evidence. Incoming enrichment changes add no pursuit/profile schema or command changes; the worker still uses its existing provider and refuses live sending.

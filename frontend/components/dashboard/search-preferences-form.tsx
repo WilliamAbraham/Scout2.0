@@ -3,12 +3,13 @@
 import { useActionState, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowUpRight, Check, Plus, Trash2 } from "lucide-react";
 import { saveSearchProfile } from "@/app/actions/profile";
 import {
   parseSearchProfile,
   profileSummary,
   sampleProfile,
+  splitPreferenceList,
 } from "@/lib/search-profile";
 import type {
   PreferencesContext,
@@ -43,13 +44,30 @@ const emptyProfile: SearchProfile = {
   preferences: null,
   availability: [],
 };
-const numericFields = [
-  ["budget_min", "Minimum rent"],
-  ["budget_max", "Maximum rent"],
-  ["bedrooms_min", "Minimum bedrooms"],
-  ["bedrooms_max", "Maximum bedrooms"],
-  ["bathrooms_min", "Minimum bathrooms"],
-] as const;
+const suggestions = {
+  neighborhoods: ["Williamsburg", "Greenpoint", "East Village", "Astoria"],
+  must_haves: [
+    "In-unit laundry",
+    "Elevator",
+    "Dishwasher",
+    "Pets allowed",
+    "Outdoor space",
+  ],
+  dealbreakers: ["Walk-up", "Ground floor", "No pets", "No laundry"],
+};
+function toDraft(profile: SearchProfile) {
+  return {
+    budget_min: String(profile.budget_min ?? ""),
+    budget_max: String(profile.budget_max ?? ""),
+    bedrooms_min: String(profile.bedrooms_min ?? ""),
+    bedrooms_max: String(profile.bedrooms_max ?? ""),
+    bathrooms_min: String(profile.bathrooms_min ?? ""),
+    neighborhoods: profile.neighborhoods.join(", "),
+    must_haves: profile.must_haves.join(", "),
+    dealbreakers: profile.dealbreakers.join(", "),
+    preferences: profile.preferences ?? "",
+  };
+}
 
 export function SearchPreferencesForm({
   context,
@@ -69,52 +87,27 @@ export function SearchPreferencesForm({
         </button>
       </div>
     );
-  if (!context.signedIn)
-    return (
-      <div className={styles.sample}>
-        <p className={styles.intro}>Read-only sample profile</p>
-        <dl>
-          <div>
-            <dt>Budget & bedrooms</dt>
-            <dd>{profileSummary(sampleProfile)}</dd>
-          </div>
-          <div>
-            <dt>Areas</dt>
-            <dd>{sampleProfile.neighborhoods.join(", ")}</dd>
-          </div>
-          <div>
-            <dt>Tour availability</dt>
-            <dd>Monday, 5–7 PM · New York time</dd>
-          </div>
-        </dl>
-        <Link href="/auth/login">Sign in to edit your search</Link>
-        <p className={styles.hint}>
-          The sample apartments are fictional. Your saved preferences apply to
-          your connected search.
-        </p>
-      </div>
-    );
   return <EditableProfileForm context={context} />;
 }
 
 function EditableProfileForm({ context }: { context: PreferencesContext }) {
-  const [draft, setDraft] = useState(() => {
-    const profile = context.profile ?? emptyProfile;
-    return {
-      budget_min: String(profile.budget_min ?? ""),
-      budget_max: String(profile.budget_max ?? ""),
-      bedrooms_min: String(profile.bedrooms_min ?? ""),
-      bedrooms_max: String(profile.bedrooms_max ?? ""),
-      bathrooms_min: String(profile.bathrooms_min ?? ""),
-      neighborhoods: profile.neighborhoods.join(", "),
-      must_haves: profile.must_haves.join(", "),
-      dealbreakers: profile.dealbreakers.join(", "),
-      preferences: profile.preferences ?? "",
-    };
-  });
-  const [windows, setWindows] = useState(context.profile?.availability ?? []);
+  const sample = !context.signedIn;
+  const profile = sample ? sampleProfile : (context.profile ?? emptyProfile);
+  const [draft, setDraft] = useState(() => toDraft(profile));
+  const [windows, setWindows] = useState(profile.availability);
   const [state, formAction, pending] = useActionState(
-    saveSearchProfile,
+    async (previous: ProfileActionState, form: FormData) => {
+      try {
+        return await saveSearchProfile(previous, form);
+      } catch {
+        return {
+          error:
+            "Your save could not be confirmed. Your edits are still here; please try again.",
+          field: null,
+          savedAt: null,
+        };
+      }
+    },
     initialState,
   );
   const [clientError, setClientError] = useState<{
@@ -122,6 +115,7 @@ function EditableProfileForm({ context }: { context: PreferencesContext }) {
     field: string;
   } | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [sampleChecked, setSampleChecked] = useState(false);
   const error =
     clientError ??
     (state.error ? { error: state.error, field: state.field } : null);
@@ -131,6 +125,7 @@ function EditableProfileForm({ context }: { context: PreferencesContext }) {
   useEffect(() => {
     if (errorMessage) feedback.current?.focus();
   }, [errorMessage, errorField]);
+
   function edit(key: keyof typeof draft, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
     setDirty(true);
@@ -148,11 +143,124 @@ function EditableProfileForm({ context }: { context: PreferencesContext }) {
     setDirty(true);
     setClientError(null);
   }
+  function inlineError(name: string) {
+    return error?.field === name ? (
+      <span className={styles.fieldError} id={"error-" + name}>
+        {error.error}
+      </span>
+    ) : null;
+  }
+  function numberInput(
+    name:
+      | "budget_min"
+      | "budget_max"
+      | "bedrooms_min"
+      | "bedrooms_max"
+      | "bathrooms_min",
+    label: string,
+  ) {
+    return (
+      <label htmlFor={"profile-" + name}>
+        {label}
+        <input
+          id={"profile-" + name}
+          name={name}
+          type="text"
+          inputMode="decimal"
+          value={draft[name]}
+          onChange={(event) => edit(name, event.target.value)}
+          aria-invalid={error?.field === name}
+          aria-describedby={error?.field === name ? "error-" + name : undefined}
+          placeholder={name.startsWith("budget") ? "No limit" : "Any"}
+        />
+        {inlineError(name)}
+      </label>
+    );
+  }
+  function preferenceInput(
+    name: keyof typeof suggestions,
+    label: string,
+    placeholder: string,
+  ) {
+    const selected = splitPreferenceList(draft[name]);
+    return (
+      <div className={styles.preferenceField}>
+        <label htmlFor={"profile-" + name}>
+          {label}
+          <input
+            id={"profile-" + name}
+            name={name}
+            value={draft[name]}
+            placeholder={placeholder}
+            aria-invalid={error?.field === name}
+            aria-describedby={
+              error?.field === name ? "error-" + name : "hint-" + name
+            }
+            onChange={(event) => edit(name, event.target.value)}
+          />
+          {inlineError(name)}
+        </label>
+        <p className={styles.hint} id={"hint-" + name}>
+          Separate items with commas, or choose a suggestion.
+        </p>
+        <div
+          className={styles.chips}
+          role="group"
+          aria-label={label + " suggestions"}
+        >
+          {suggestions[name].map((item) => {
+            const active = selected.some(
+              (value) => value.toLowerCase() === item.toLowerCase(),
+            );
+            return (
+              <button
+                key={item}
+                type="button"
+                aria-pressed={active}
+                onClick={() => {
+                  edit(
+                    name,
+                    (active
+                      ? selected.filter(
+                          (value) => value.toLowerCase() !== item.toLowerCase(),
+                        )
+                      : [...selected, item]
+                    ).join(", "),
+                  );
+                }}
+              >
+                {active ? (
+                  <Check aria-hidden="true" />
+                ) : (
+                  <Plus aria-hidden="true" />
+                )}
+                {item}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+  const summaryForm = new FormData();
+  for (const [key, value] of Object.entries(draft)) summaryForm.set(key, value);
+  summaryForm.set("availability", JSON.stringify(windows));
+  const summary = parseSearchProfile(summaryForm);
+  const current = summary.profile;
+  const requirements = splitPreferenceList(draft.must_haves);
+  const exclusions = splitPreferenceList(draft.dealbreakers);
+  const conflicting = requirements.filter((item) =>
+    exclusions.some(
+      (excluded) => excluded.toLowerCase() === item.toLowerCase(),
+    ),
+  );
+
   return (
     <form
       className={styles.form}
-      action={formAction}
+      action={sample ? undefined : formAction}
       noValidate
+      onReset={(event) => event.preventDefault()}
       onSubmit={(event) => {
         const parsed = parseSearchProfile(new FormData(event.currentTarget));
         if (parsed.error !== null) {
@@ -161,223 +269,340 @@ function EditableProfileForm({ context }: { context: PreferencesContext }) {
           return;
         }
         setClientError(null);
+        if (sample) {
+          event.preventDefault();
+          setSampleChecked(true);
+        }
         setDirty(false);
       }}
     >
-      <p className={styles.intro}>
-        {context.profile
-          ? "Update what Scout should look for."
-          : "Set your criteria to get your search started."}{" "}
-        Blank fields mean no preference.
-      </p>
-      <section className={styles.connection} aria-label="Gmail connection">
-        <strong>
-          {context.gmailError
-            ? "Connection status unavailable"
-            : !context.gmail
-              ? "Gmail status not reported"
-              : context.gmail.sync_error
-                ? "Gmail needs attention"
-                : "Gmail connected"}
-        </strong>
-        {context.gmail && <p>{context.gmail.email_address}</p>}
-        {context.gmail?.last_synced_at && (
-          <p>
-            Last synced{" "}
-            {new Date(context.gmail.last_synced_at).toLocaleString("en-US", {
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-              timeZone: "America/New_York",
-              timeZoneName: "short",
-            })}
-          </p>
-        )}
-        {(!context.gmail || context.gmail.sync_error) && (
-          <p>
-            You can save preferences now. The worker does not report Gmail
-            status here yet; Google connection and reconnection are not
-            available.
-          </p>
-        )}
-      </section>
+      {sample && (
+        <div className={styles.sample}>
+          <div>
+            <strong>Try a sample search</strong>
+            <p>
+              Explore the filters below. Changes stay in this preview and reset
+              on refresh.
+            </p>
+          </div>
+          <Link href="/auth/login">
+            Sign in to save <ArrowUpRight aria-hidden="true" />
+          </Link>
+        </div>
+      )}
       <div ref={feedback} tabIndex={-1} className={styles.feedback}>
         {error && (
-          <p id="profile-error" role="alert">
-            {error.error}
+          <p role="alert">
+            {error.error}{" "}
             {error.field && (
-              <>
-                {" "}
-                <a href={`#profile-${error.field}`}>Review field</a>
-              </>
+              <a href={"#profile-" + error.field}>Review field</a>
             )}
+          </p>
+        )}
+        {!error && !dirty && sampleChecked && (
+          <p role="status" className={styles.success}>
+            Sample preferences checked. Nothing was saved.
           </p>
         )}
         {!error && !dirty && !pending && state.savedAt && (
           <p role="status" className={styles.success}>
-            Search preferences saved.
+            Search preferences saved. They apply to newly evaluated listings.
           </p>
         )}
       </div>
-      <fieldset disabled={pending} className={styles.fields}>
-        <legend>Budget & rooms</legend>
-        <div className={styles.grid}>
-          {numericFields.map(([name, label]) => (
-            <label key={name} htmlFor={`profile-${name}`}>
-              {label}
-              <input
-                id={`profile-${name}`}
-                name={name}
-                type="text"
-                inputMode="decimal"
-                value={draft[name]}
-                onChange={(event) => edit(name, event.target.value)}
-                aria-invalid={error?.field === name}
+      <div className={styles.layout}>
+        <div className={styles.sections}>
+          <fieldset disabled={pending} className={styles.section}>
+            <legend>
+              <span className={styles.number}>01</span> Search filters
+            </legend>
+            <p className={styles.description}>
+              Your limits for newly evaluated listings. Leave a field blank to
+              keep it open.
+            </p>
+            <div className={styles.fieldGroup}>
+              <h2>
+                Monthly rent <span>USD / month</span>
+              </h2>
+              <div className={styles.grid}>
+                {numberInput("budget_min", "Minimum rent")}
+                {numberInput("budget_max", "Maximum rent")}
+              </div>
+              <p className={styles.hint}>
+                Uses the rent in the alert. Utilities and extra fees aren’t
+                included.
+              </p>
+            </div>
+            <div className={styles.fieldGroup}>
+              <h2>Rooms</h2>
+              <div className={styles.grid}>
+                {numberInput("bedrooms_min", "Minimum bedrooms")}
+                {numberInput("bedrooms_max", "Maximum bedrooms")}
+              </div>
+              <p className={styles.hint}>
+                For a studio, set both bedroom limits to 0.
+              </p>
+              <div className={styles.bathroom}>
+                {numberInput("bathrooms_min", "Minimum bathrooms")}
+              </div>
+            </div>
+            <p className={styles.note}>
+              Listings with an unknown bedroom or bathroom count can still
+              match. Confirm missing details with the broker.
+            </p>
+          </fieldset>
+
+          <fieldset disabled={pending} className={styles.section}>
+            <legend>
+              <span className={styles.number}>02</span> Apartment preferences
+            </legend>
+            <p className={styles.description}>
+              Details for Scout’s broker conversations. These don’t
+              automatically exclude listings yet.
+            </p>
+            {preferenceInput(
+              "neighborhoods",
+              "Neighborhoods",
+              "e.g. Lower East Side, Park Slope",
+            )}
+            {preferenceInput(
+              "must_haves",
+              "Must-haves",
+              "e.g. Elevator, enough space for a desk",
+            )}
+            {preferenceInput(
+              "dealbreakers",
+              "Dealbreakers",
+              "e.g. Ground floor, no pets",
+            )}
+            {conflicting.length > 0 && (
+              <p className={styles.note}>
+                Listed in both must-haves and dealbreakers:{" "}
+                {conflicting.join(", ")}. Clarify which you mean before saving.
+              </p>
+            )}
+            <label htmlFor="profile-preferences" className={styles.notesLabel}>
+              Anything else Scout should know
+              <textarea
+                id="profile-preferences"
+                name="preferences"
+                rows={3}
+                value={draft.preferences}
+                aria-invalid={error?.field === "preferences"}
                 aria-describedby={
-                  error?.field === name ? "profile-error" : undefined
+                  error?.field === "preferences"
+                    ? "error-preferences"
+                    : "notes-hint"
                 }
-                placeholder="No preference"
+                onChange={(event) => edit("preferences", event.target.value)}
+                placeholder="Move-in timing, lease length, a commute, or details to ask the broker about…"
               />
+              {inlineError("preferences")}
             </label>
-          ))}
-        </div>
-        <label htmlFor="profile-neighborhoods">
-          Areas
-          <input
-            id="profile-neighborhoods"
-            name="neighborhoods"
-            value={draft.neighborhoods}
-            onChange={(event) => edit("neighborhoods", event.target.value)}
-            placeholder="Williamsburg, Greenpoint"
-          />
-        </label>
-        <p className={styles.hint}>Separate neighborhoods with commas.</p>
-        <div className={styles.grid}>
-          {(
-            [
-              ["must_haves", "Must haves"],
-              ["dealbreakers", "Dealbreakers"],
-            ] as const
-          ).map(([name, label]) => (
-            <label key={name} htmlFor={`profile-${name}`}>
-              {label}
-              <input
-                id={`profile-${name}`}
-                name={name}
-                value={draft[name]}
-                onChange={(event) => edit(name, event.target.value)}
-                placeholder="Separate items with commas"
-              />
-            </label>
-          ))}
-        </div>
-        <label htmlFor="profile-preferences">
-          Anything else
-          <textarea
-            id="profile-preferences"
-            name="preferences"
-            value={draft.preferences}
-            onChange={(event) => edit("preferences", event.target.value)}
-            rows={3}
-            placeholder="Other preferences Scout should know"
-          />
-        </label>
-      </fieldset>
-      <fieldset
-        id="profile-availability"
-        tabIndex={-1}
-        disabled={pending}
-        className={styles.windows}
-        aria-invalid={error?.field === "availability"}
-        aria-describedby={
-          error?.field === "availability" ? "profile-error" : undefined
-        }
-      >
-        <legend>Tour availability</legend>
-        <p className={styles.hint}>
-          Weekly windows in New York time. A window must start and end on the
-          same day.
-        </p>
-        <input
-          type="hidden"
-          name="availability"
-          value={JSON.stringify(windows)}
-        />
-        {windows.map((window, index) => (
-          <div key={index} className={styles.window}>
-            <label>
-              Day
-              <select
-                aria-label={`Window ${index + 1} day`}
-                value={window.day}
-                onChange={(event) =>
-                  updateWindow(index, { day: Number(event.target.value) })
-                }
-              >
-                {days.map((day, value) => (
-                  <option key={day} value={value}>
-                    {day}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label>
-              From
-              <input
-                aria-label={`Window ${index + 1} start`}
-                type="time"
-                value={window.start}
-                onChange={(event) =>
-                  updateWindow(index, { start: event.target.value })
-                }
-              />
-            </label>
-            <label>
-              Until
-              <input
-                aria-label={`Window ${index + 1} end`}
-                type="time"
-                value={window.end}
-                onChange={(event) =>
-                  updateWindow(index, { end: event.target.value })
-                }
-              />
-            </label>
+            <p className={styles.hint} id="notes-hint">
+              Saved as conversation notes, rather than automatic search filters.
+            </p>
+          </fieldset>
+
+          <fieldset
+            id="profile-availability"
+            tabIndex={-1}
+            disabled={pending}
+            className={styles.section}
+            aria-invalid={error?.field === "availability"}
+            aria-describedby={
+              error?.field === "availability" ? "error-availability" : undefined
+            }
+          >
+            <legend>
+              <span className={styles.number}>03</span> Tour availability
+            </legend>
+            <p className={styles.description}>
+              Times Scout can mention when asking about a tour. All times are in
+              New York time.
+            </p>
+            {inlineError("availability")}
+            <input
+              type="hidden"
+              name="availability"
+              value={JSON.stringify(windows)}
+            />
+            {windows.map((window, index) => (
+              <div key={index} className={styles.window}>
+                <label>
+                  Day
+                  <select
+                    aria-label={"Window " + (index + 1) + " day"}
+                    value={window.day}
+                    onChange={(event) =>
+                      updateWindow(index, { day: Number(event.target.value) })
+                    }
+                  >
+                    {days.map((day, value) => (
+                      <option key={day} value={value}>
+                        {day}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  From
+                  <input
+                    aria-label={"Window " + (index + 1) + " start"}
+                    type="time"
+                    value={window.start}
+                    onChange={(event) =>
+                      updateWindow(index, { start: event.target.value })
+                    }
+                  />
+                </label>
+                <label>
+                  Until
+                  <input
+                    aria-label={"Window " + (index + 1) + " end"}
+                    type="time"
+                    value={window.end}
+                    onChange={(event) =>
+                      updateWindow(index, { end: event.target.value })
+                    }
+                  />
+                </label>
+                <button
+                  type="button"
+                  aria-label={"Remove window " + (index + 1)}
+                  onClick={() => {
+                    setWindows(
+                      windows.filter((_, position) => position !== index),
+                    );
+                    setDirty(true);
+                    setClientError(null);
+                  }}
+                >
+                  <Trash2 aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+            {!windows.length && (
+              <p className={styles.note}>
+                No windows set. Scout describes your availability as flexible.
+              </p>
+            )}
             <button
               type="button"
-              aria-label={`Remove window ${index + 1}`}
+              className={styles.add}
               onClick={() => {
-                setWindows(windows.filter((_, position) => position !== index));
+                setWindows([
+                  ...windows,
+                  { day: 1, start: "17:00", end: "19:00" },
+                ]);
                 setDirty(true);
                 setClientError(null);
               }}
             >
-              <Trash2 aria-hidden="true" />
+              <Plus aria-hidden="true" /> Add a time window
             </button>
+            <p className={styles.hint}>
+              Each window must end on the same day. Saving availability doesn’t
+              book a tour or resolve an existing scheduling question.
+            </p>
+          </fieldset>
+        </div>
+
+        <aside className={styles.summary} aria-label="Search summary">
+          <span className={styles.eyebrow}>
+            {sample ? "Sample search" : "Your search"}
+          </span>
+          <h2>
+            {current ? profileSummary(current) : "Review your preferences"}
+          </h2>
+          <p className={styles.summaryState}>
+            {sample
+              ? "Preview only · not saved"
+              : pending
+                ? "Saving…"
+                : dirty
+                  ? "Unsaved changes"
+                  : state.error
+                    ? "Changes not saved"
+                    : context.profile || state.savedAt
+                      ? "Saved preferences"
+                      : "No preferences saved yet"}
+          </p>
+          <dl>
+            <div>
+              <dt>Bathrooms</dt>
+              <dd>
+                {current
+                  ? current.bathrooms_min === null
+                    ? "No minimum"
+                    : current.bathrooms_min + "+"
+                  : "Review fields"}
+              </dd>
+            </div>
+            <div>
+              <dt>Preferred neighborhoods</dt>
+              <dd>
+                {splitPreferenceList(draft.neighborhoods).join(", ") ||
+                  "Open to any area"}
+              </dd>
+            </div>
+            <div>
+              <dt>Must-haves / dealbreakers</dt>
+              <dd>{requirements.length + " / " + exclusions.length}</dd>
+            </div>
+          </dl>
+          <div className={styles.summaryNote}>
+            <Check aria-hidden="true" />
+            <p>
+              Rent and room limits filter new evaluations. Other preferences
+              guide broker conversations.
+            </p>
           </div>
-        ))}
-        {!windows.length && <p className={styles.hint}>No tour windows set.</p>}
-        <button
-          type="button"
-          className={styles.add}
-          onClick={() => {
-            setWindows([...windows, { day: 1, start: "17:00", end: "19:00" }]);
-            setDirty(true);
-          }}
-        >
-          <Plus aria-hidden="true" /> Add a window
-        </button>
-      </fieldset>
-      {/* Move-in and editable timezone wait for Person A's schema migration. */}
+          <div className={styles.sourceNote}>
+            <strong>Start with your listing alerts</strong>
+            <p>
+              Scout reads the alerts you receive. Keep your StreetEasy saved
+              search in sync with these preferences.
+            </p>
+          </div>
+        </aside>
+      </div>
       <footer className={styles.footer}>
-        <p className={styles.hint}>
-          Saves your profile. This does not send messages or book tours.
+        <p>
+          Applies to newly evaluated listings. Existing inbox matches and your
+          StreetEasy alerts stay unchanged.
         </p>
-        <button className={styles.save} disabled={pending}>
-          {pending ? "Saving…" : "Save preferences"}
-        </button>
+        {sample ? (
+          <button type="submit" className={styles.preview}>
+            Check sample preferences
+          </button>
+        ) : (
+          <button className={styles.save} disabled={pending}>
+            {pending ? "Saving…" : "Save preferences"}
+          </button>
+        )}
       </footer>
+      {!sample && (
+        <details className={styles.connection}>
+          <summary>
+            Gmail connection{" "}
+            <span>
+              {context.gmailError
+                ? "Status unavailable"
+                : !context.gmail
+                  ? "Status not reported"
+                  : context.gmail.sync_error
+                    ? "Needs attention"
+                    : "Connected"}
+            </span>
+          </summary>
+          {context.gmail && <p>{context.gmail.email_address}</p>}
+          <p>
+            You can save preferences independently of the connection status.
+            Google connection setup and reconnection aren’t available here yet.
+          </p>
+        </details>
+      )}
     </form>
   );
 }

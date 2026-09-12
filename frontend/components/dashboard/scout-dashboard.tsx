@@ -48,7 +48,6 @@ import {
   submitDemoResolution,
 } from "./inbox-model";
 import type { InboxListing, View } from "./inbox-model";
-import { SearchPreferencesForm } from "./search-preferences-form";
 import { ListingQuestions, ListingSnapshot } from "./listing-snapshot";
 import {
   LiveBlockerControl,
@@ -154,7 +153,6 @@ export function ScoutDashboard({
   const [refreshPending, startRefresh] = useTransition();
   const [notice, setNotice] = useState("");
   const [previous, setPrevious] = useState<Record<string, InboxListing>>({});
-  const preferences = useRef<HTMLDialogElement>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
   const listings = mode === "live" ? initialListings : demoListingState;
   const paused = mode === "live" ? account.paused : demoPaused;
@@ -298,19 +296,16 @@ export function ScoutDashboard({
                 onRefresh={refreshInbox}
               />
             )}
-            <button
-              onClick={() => preferences.current?.showModal()}
-              aria-label="Search preferences"
-            >
+            <Link href="/preferences" aria-label="Search preferences">
               <Settings2 aria-hidden="true" />
-            </button>
+            </Link>
           </div>
           <div className={styles.searchProfile}>
             <span>Your search</span>
             <p>{searchSummary}</p>
-            <button onClick={() => preferences.current?.showModal()}>
+            <Link href="/preferences">
               <Settings2 aria-hidden="true" /> View preferences
-            </button>
+            </Link>
           </div>
           <footer className={styles.navFooter}>
             <div>
@@ -731,7 +726,7 @@ export function ScoutDashboard({
                 pursuitState={pursuitState}
                 pursuitPending={pursuitPending}
                 onRefresh={refreshInbox}
-                openPreferences={() => preferences.current?.showModal()}
+                openPreferences={() => router.push("/preferences#profile-availability")}
               />
               <footer className={styles.detailFooter}>
                 {mode === "demo" &&
@@ -814,24 +809,6 @@ export function ScoutDashboard({
       <p className={styles.notice} role="status">
         {notice}
       </p>
-      <dialog
-        ref={preferences}
-        className={styles.preferences}
-        aria-labelledby="preferences-title"
-      >
-        <header>
-          <h2 id="preferences-title">Search preferences</h2>
-          <button
-            autoFocus
-            aria-label="Close preferences"
-            className={styles.iconButton}
-            onClick={() => preferences.current?.close()}
-          >
-            <X aria-hidden="true" />
-          </button>
-        </header>
-        <SearchPreferencesForm context={preferencesContext} />
-      </dialog>
     </div>
   );
 }

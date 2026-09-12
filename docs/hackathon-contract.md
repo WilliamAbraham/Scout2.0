@@ -25,7 +25,7 @@ Server Actions use the request-scoped Supabase client and revalidate the session
 
 | Action | Preconditions and write | Effect |
 |---|---|---|
-| Save preferences | Editable criteria only, existing profile action | Worker uses the stored profile |
+| Save preferences | Editable criteria only, session owner and returned owner-row receipt | Rent/bedroom/bathroom bounds apply to new evaluations; neighborhood/requirements/notes and tour windows go to outreach context. Existing match decisions remain unchanged. |
 | Supply contact | Owned pursuit, matched, no_contact, no thread, finished enrichment, unchanged updated_at, no existing opening draft | Write snapshot and clear all three needs_human fields atomically; eligible for a future opening cycle |
 | Close pursuit | Owned non-dead pursuit, unchanged updated_at | Set stage=dead, clear next_follow_up_at; preserve contact, thread, blocker history and events |
 | Pause / resume | Owned existing profile, expected pause state and unchanged read version | Change only paused_at and updated_at; retries requesting an already-set state do not toggle it |
@@ -45,3 +45,7 @@ The other five blockers have explicit UI placeholders: question answers, fitting
 ## Verification
 
 Command tests use a fake Supabase request adapter to check session ownership, state predicates, column whitelists, stale/uncertain writes, draft suppression and pause retry behavior. Projection tests cover actual payload shapes and malformed records. These establish application behavior, not deployed RLS or a completed worker cycle. Browser/live verification and deployment status are tracked in [context.md](../context.md) and the [demo runbook](demo-runbook.md).
+
+## Preferences page
+
+`/preferences` replaces the inbox dialog. Signed-out visitors can edit/check an explicitly local sample; signed-in visitors load their own profile and save through the authorized action. List entries are trimmed and deduplicated case-insensitively while preserving the first spelling. Profile saves preserve worker-owned columns but remain last-save-wins (no profile version guard). They do not change StreetEasy alerts, re-score existing matches, resolve blockers, send mail or book tours. Blank availability becomes “flexible” in the current outreach adapter. Unknown listing bedroom/bathroom counts can pass configured bounds; there is no human-review gate for those listings.
