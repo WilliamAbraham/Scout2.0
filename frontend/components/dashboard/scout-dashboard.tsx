@@ -39,6 +39,9 @@ import {
   submitDemoResolution,
 } from "./inbox-model";
 import type { InboxListing, View } from "./inbox-model";
+import { SearchPreferencesForm } from "./search-preferences-form";
+import { profileSummary, signedOutPreferences } from "@/lib/search-profile";
+import type { PreferencesContext } from "@/lib/search-profile";
 import styles from "./scout-dashboard.module.css";
 
 export type InboxAccount = {
@@ -52,7 +55,7 @@ const demoAccount: InboxAccount = {
   status: "Demo workspace",
   detail: "Sample data · No messages sent",
   paused: false,
-  profileSummary: "1 bedroom · Up to $3,500 · October move-in",
+  profileSummary: "1 bedroom · Up to $3,500",
   error: false,
 };
 const money = (value: number) =>
@@ -90,11 +93,18 @@ export function ScoutDashboard({
   initialListings = demoListings,
   mode = "demo",
   account = demoAccount,
+  preferencesContext = signedOutPreferences,
 }: {
   initialListings?: InboxListing[];
   mode?: "demo" | "live";
   account?: InboxAccount;
+  preferencesContext?: PreferencesContext;
 }) {
+  const searchSummary = preferencesContext.profileError
+    ? "Search preferences unavailable"
+    : preferencesContext.signedIn
+      ? profileSummary(preferencesContext.profile)
+      : account.profileSummary;
   const [listings, setListings] = useState(initialListings);
   const [view, setView] = useState<View>("Active");
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -246,7 +256,7 @@ export function ScoutDashboard({
           </div>
           <div className={styles.searchProfile}>
             <span>Your search</span>
-            <p>{account.profileSummary}</p>
+            <p>{searchSummary}</p>
             <button onClick={() => preferences.current?.showModal()}>
               <Settings2 aria-hidden="true" /> View preferences
             </button>
@@ -706,12 +716,7 @@ export function ScoutDashboard({
             <X aria-hidden="true" />
           </button>
         </header>
-        <p>{account.profileSummary}</p>
-        <p className={styles.muted}>
-          {mode === "demo"
-            ? "Read-only sample profile. Brooklyn and Lower Manhattan; October 2026 move-in."
-            : "Profile editing and Google connection setup are being built separately."}
-        </p>
+        <SearchPreferencesForm context={preferencesContext} />
       </dialog>
     </div>
   );

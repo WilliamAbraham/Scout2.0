@@ -4,13 +4,15 @@ import { createClient } from "@/lib/supabase/server";
 import { ScoutDashboard } from "@/components/dashboard/scout-dashboard";
 import { projectRecords } from "@/components/dashboard/inbox-records";
 import type { StoredUserListing } from "@/components/dashboard/inbox-records";
+import { loadPreferences } from "@/lib/profile-server";
+import { profileSummary } from "@/lib/search-profile";
 
 async function ConnectedInbox() {
   const supabase = await createClient();
   const { data: auth, error: authError } = await supabase.auth.getClaims();
   if (authError || !auth?.claims?.sub) redirect("/auth/login");
   const userId = auth.claims.sub;
-  const [feed, connection, profile] = await Promise.all([
+  const [feed, preferencesContext] = await Promise.all([
     supabase
       .from("user_listings")
       .select(
@@ -18,19 +20,14 @@ async function ConnectedInbox() {
       )
       .eq("user_id", userId)
       .order("first_seen_at", { ascending: false }),
-    supabase
-      .from("gmail_accounts")
-      .select("last_synced_at,sync_error")
-      .eq("user_id", userId)
-      .maybeSingle(),
-    supabase
-      .from("search_profiles")
-      .select("budget_max,bedrooms_min,paused_at")
-      .eq("user_id", userId)
-      .maybeSingle(),
+    loadPreferences(supabase, userId),
   ]);
-  const error = Boolean(feed.error || connection.error || profile.error);
-  const google = connection.data;
+  const error = Boolean(
+    feed.error ||
+    preferencesContext.gmailError ||
+    preferencesContext.profileError,
+  );
+  const google = preferencesContext.gmail;
   const status = error
     ? "Inbox unavailable"
     : !google
@@ -49,16 +46,7 @@ async function ConnectedInbox() {
         : google.last_synced_at
           ? `Last synced ${new Date(google.last_synced_at).toLocaleString("en-US", { timeZone: "America/New_York", timeZoneName: "short" })}`
           : "The account is connected, but no successful sync is recorded.";
-  const summary = profile.data
-    ? [
-        profile.data.bedrooms_min === null
-          ? "Bedrooms not set"
-          : `${profile.data.bedrooms_min}+ bedrooms`,
-        profile.data.budget_max === null
-          ? "Budget not set"
-          : `Up to $${Number(profile.data.budget_max).toLocaleString("en-US")}`,
-      ].join(" · ")
-    : "Search profile not configured";
+  const summary = profileSummary(preferencesContext.profile);
   return (
     <ScoutDashboard
       initialListings={
@@ -67,10 +55,11 @@ async function ConnectedInbox() {
           : projectRecords((feed.data ?? []) as unknown as StoredUserListing[])
       }
       mode="live"
+      preferencesContext={preferencesContext}
       account={{
         status,
         detail,
-        paused: Boolean(profile.data?.paused_at),
+        paused: preferencesContext.paused,
         profileSummary: summary,
         error,
       }}

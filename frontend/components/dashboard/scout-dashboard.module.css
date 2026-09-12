@@ -862,7 +862,9 @@
   display: none;
 }
 .preferences {
-  width: min(440px, calc(100% - 36px));
+  width: min(640px, calc(100% - 36px));
+  max-height: calc(100dvh - 36px);
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 24px;
