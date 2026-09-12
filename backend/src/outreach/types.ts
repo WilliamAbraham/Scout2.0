@@ -57,7 +57,7 @@ export type TurnInput = {
   alreadyProcessed: boolean;
   sendsToday: number;
   sendCap: number;
-  now?: Date;
+  now?: Date | undefined;
 };
 
 export type ToolName =
@@ -75,7 +75,7 @@ export type LlmToolCall = {
 };
 
 export type LlmCompletion = {
-  text?: string;
+  text?: string | undefined;
   toolCalls: LlmToolCall[];
 };
 

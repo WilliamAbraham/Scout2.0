@@ -124,7 +124,7 @@ CREATE TABLE "pursuits" (
 --> statement-breakpoint
 ALTER TABLE "pursuits" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 ALTER TABLE "listings" ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
-ALTER TABLE "listings" ADD COLUMN "brokerage" text;--> statement-breakpoint
+ALTER TABLE "listings" ADD COLUMN IF NOT EXISTS "brokerage" text;--> statement-breakpoint
 ALTER TABLE "user_listings" ADD CONSTRAINT "user_listings_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "user_listings" ADD CONSTRAINT "user_listings_listing_id_listings_id_fk" FOREIGN KEY ("listing_id") REFERENCES "public"."listings"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "gmail_accounts" ADD CONSTRAINT "gmail_accounts_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "auth"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

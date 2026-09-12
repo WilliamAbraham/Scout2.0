@@ -107,9 +107,9 @@ function parseToolCalls(raw: OpenRouterToolCall[] | undefined): LlmToolCall[] {
 
 export function createOpenRouterClient(options: {
   apiKey: string;
-  model?: string;
+  model?: string | undefined;
   fetchImpl?: typeof fetch;
-  appUrl?: string;
+  appUrl?: string | undefined;
 }): LlmClient {
   const model = options.model ?? process.env.OPENROUTER_MODEL ?? 'openai/gpt-4o-mini';
   const fetchImpl = options.fetchImpl ?? fetch;

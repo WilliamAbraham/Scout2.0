@@ -3,12 +3,11 @@ import test from 'node:test';
 
 import type {Listing as GmailListing} from '../gmail/listings.ts';
 import type {EmailListing, EnrichmentResult} from '../enrichment/service.ts';
-import type {OutreachPorts} from '../outreach/types.ts';
 import {gmailListingToEmailInput} from './listingInput.ts';
 import {splitBrokerage, isStreetEasyAlert} from './brokerage.ts';
 import {contactSnapshotFromEnrichment, agentsForOutreach} from './contacts.ts';
 import {processListingAlert, processStreetEasyAlert} from './alert.ts';
-import type {AlertPipelineDeps} from './alert.ts';
+import type {AlertPipelineDeps, AlertStore, IngestOutcome} from './alert.ts';
 
 const listing: GmailListing = {
   address: '118 Mulberry Street #R4',
@@ -52,26 +51,36 @@ const enrichmentReady = (overrides: Partial<EnrichmentResult> = {}): EnrichmentR
   ...overrides,
 });
 
-function deps(overrides: Partial<AlertPipelineDeps> = {}): AlertPipelineDeps {
-  const sent: string[] = [];
-  const ports: OutreachPorts = {
-    llm: {complete: async () => ({text: 'Tour request body', toolCalls: []})},
-    checkAvailability: async () => ({free: true}),
-    bookTour: async () => ({eventId: 'evt-1'}),
-    sendMail: async message => {
-      sent.push(message.body);
-      return {threadId: 'thread-new', messageId: 'msg-out'};
-    },
-    sendPacket: async () => {},
-  };
+type Recorded = {ingested: string[]; saved: Array<{pursuitId: string; hasSnapshot: boolean; summary: Record<string, unknown>}>};
+
+function fakeStore(ingest: Partial<IngestOutcome> = {}): AlertStore & Recorded {
+  const recorded: Recorded = {ingested: [], saved: []};
   return {
-    enrich: async (_input: EmailListing) => enrichmentReady(),
-    ports,
-    profile: {budgetMax: 8000, bedrooms: 3, availabilityNote: 'evenings', freeText: '', learnedAnswers: []},
-    sendsToday: 0,
-    sendCap: 10,
-    ...overrides,
+    ...recorded,
+    async ingestListing(_userId, _source, listing) {
+      recorded.ingested.push(listing.rentalId);
+      return {
+        listingId: 'listing-1', userListingId: 'ul-1', isMatch: true, isNew: true,
+        pursuitId: 'pursuit-1', needsEnrichment: true, ...ingest,
+      };
+    },
+    async saveEnrichment(_userId, pursuitId, snapshot, summary) {
+      recorded.saved.push({pursuitId, hasSnapshot: snapshot !== null, summary});
+    },
+    get ingested() { return recorded.ingested; },
+    get saved() { return recorded.saved; },
   };
+}
+
+const source = {messageId: 'msg-1', receivedAt: new Date('2026-09-12T12:00:00Z')};
+
+function deps(overrides: Partial<AlertPipelineDeps> = {}): AlertPipelineDeps & {store: AlertStore & Recorded} {
+  const store = fakeStore();
+  return {
+    store,
+    enrich: async (_input: EmailListing) => enrichmentReady(),
+    ...overrides,
+  } as AlertPipelineDeps & {store: AlertStore & Recorded};
 }
 
 test('splitBrokerage separates office address in parentheses', () => {
@@ -99,23 +108,47 @@ test('enrichment contacts map to outreach agents', () => {
   assert.deepEqual(agentsForOutreach(snapshot!), [{name: 'Ava Agent', email: 'ava@broker.example', role: 'primary'}]);
 });
 
-test('processListingAlert enriches then sends opening outreach', async () => {
+test('processListingAlert persists the listing, enriches, and saves the contact snapshot', async () => {
   const pipeline = deps();
-  const outcome = await processListingAlert(listing, pipeline);
+  const outcome = await processListingAlert('user-1', source, listing, pipeline);
 
-  assert.equal(outcome.status, 'outreach_sent');
-  if (outcome.status === 'outreach_sent') {
-    assert.equal(outcome.turn.pursuit.stage, 'contacted');
-    assert.ok(outcome.turn.pursuit.nextFollowUpAt);
-  }
+  assert.equal(outcome.status, 'ready');
+  assert.deepEqual(pipeline.store.ingested, ['123']);
+  assert.equal(pipeline.store.saved.length, 1);
+  assert.equal(pipeline.store.saved[0]?.hasSnapshot, true);
+  assert.equal(pipeline.store.saved[0]?.summary.resolution, 'agents_verified');
 });
 
-test('processListingAlert escalates when enrichment has no email', async () => {
-  const outcome = await processListingAlert(listing, deps({
+test('processListingAlert escalates no_contact when enrichment has no email', async () => {
+  const pipeline = deps({
     enrich: async () => enrichmentReady({agents: [], outreachReady: false, resolution: 'unresolved'}),
-  }));
+  });
+  const outcome = await processListingAlert('user-1', source, listing, pipeline);
 
   assert.equal(outcome.status, 'needs_human');
+  assert.equal(pipeline.store.saved[0]?.hasSnapshot, false);
+});
+
+test('processListingAlert skips non-matches without enriching', async () => {
+  let enriched = 0;
+  const store = fakeStore({isMatch: false, pursuitId: null, needsEnrichment: false});
+  const outcome = await processListingAlert('user-1', source, listing, {
+    store,
+    enrich: async () => { enriched += 1; return enrichmentReady(); },
+  });
+
+  assert.deepEqual(outcome, {rentalId: '123', status: 'skipped', reason: 'not_matched'});
+  assert.equal(enriched, 0);
+});
+
+test('processListingAlert records an enrichment failure as needs_human instead of retrying', async () => {
+  const pipeline = deps({enrich: async () => { throw new Error('provider down'); }});
+  const outcome = await processListingAlert('user-1', source, listing, pipeline);
+
+  assert.equal(outcome.status, 'needs_human');
+  if (outcome.status === 'needs_human') assert.equal(outcome.reason, 'enrichment_error');
+  assert.equal(pipeline.store.saved[0]?.hasSnapshot, false);
+  assert.match(String(pipeline.store.saved[0]?.summary.note), /provider down/);
 });
 
 test('processStreetEasyAlert parses listing cards from alert html', async () => {
@@ -138,19 +171,15 @@ test('processStreetEasyAlert parses listing cards from alert html', async () => 
   };
 
   try {
-    const result = await processStreetEasyAlert({
+    const result = await processStreetEasyAlert('user-1', {
       id: 'msg-1',
-      threadId: 'thread-1',
-      subject: 'New listings',
       from: 'noreply@email.streeteasy.com',
       date: new Date().toISOString(),
-      snippet: '',
-      textBody: null,
       htmlBody: html,
     }, deps());
 
     assert.equal(result.listings.length, 1);
-    assert.equal(result.listings[0]?.status, 'outreach_sent');
+    assert.equal(result.listings[0]?.status, 'ready');
   } finally {
     globalThis.fetch = originalFetch;
   }

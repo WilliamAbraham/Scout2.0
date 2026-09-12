@@ -16,11 +16,9 @@
     "test:enrichment": "node --test src/enrichment/*.test.ts",
     "typecheck:enrichment": "tsc -p tsconfig.enrichment.json",
     "typecheck": "tsc",
-    "extract": "node scripts/extract.ts",
     "worker": "node scripts/worker.ts",
-    "process-alerts": "node scripts/processAlerts.ts",
     "watch-inbox": "node scripts/watchInbox.ts",
-    "test": "node --test src/enrichment/*.test.ts src/outreach/*.test.ts src/pipeline/*.test.ts src/gmail/inboxWatch.test.ts",
+    "test": "node --test \"src/**/*.test.ts\"",
     "enrich:agent": "node scripts/enrichAgent.ts"
   },
   "dependencies": {

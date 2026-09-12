@@ -31,7 +31,9 @@ export type WorkerCycleReport = {
   users: number;
   synced: number;
   alerts: number;
-  alertOutreach: number;
+  alertReady: number;
+  /** Alerts left unprocessed because a listing failed before persistence. */
+  alertRetries: number;
   replies: number;
   opened: number;
   followUps: number;
@@ -41,7 +43,7 @@ export type WorkerCycleReport = {
 export type WorkerOptions = {
   now?: Date;
   createPorts(userId: string): OutreachPorts;
-  /** StreetEasy alert → enrich → outreach. Returns outreach count per message. */
+  /** StreetEasy alert → persist → enrich. Ready pursuits are opened below. */
   processAlert?: (userId: string, message: SyncedMessage, ports: OutreachPorts, at: Date) => Promise<AlertMessageResult>;
 };
 
@@ -70,7 +72,8 @@ export async function runWorkerCycle(store: WorkerStore, options: WorkerOptions)
     users: 0,
     synced: 0,
     alerts: 0,
-    alertOutreach: 0,
+    alertReady: 0,
+    alertRetries: 0,
     replies: 0,
     opened: 0,
     followUps: 0,
@@ -97,7 +100,12 @@ export async function runWorkerCycle(store: WorkerStore, options: WorkerOptions)
       if (message.route === 'alert' && options.processAlert) {
         const alertResult = await options.processAlert(user.userId, message, ports, at);
         report.alerts += 1;
-        report.alertOutreach += alertResult.listings.filter(listing => listing.status === 'outreach_sent').length;
+        report.alertReady += alertResult.listings.filter(listing => listing.status === 'ready').length;
+        if (alertResult.listings.some(listing => listing.status === 'error')) {
+          // Something failed before it was persisted; leave the alert for the next cycle.
+          report.alertRetries += 1;
+          continue;
+        }
       }
 
       if (message.route === 'reply' && message.pursuitId) {

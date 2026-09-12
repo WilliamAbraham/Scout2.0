@@ -22,6 +22,13 @@
       "when": 1789242951742,
       "tag": "0002_pipeline_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789247550779,
+      "tag": "0003_pursuit_follow_ups",
+      "breakpoints": true
     }
   ]
 }
