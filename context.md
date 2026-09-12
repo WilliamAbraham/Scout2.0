@@ -2,6 +2,18 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Current inbox implementation — 2026-09-12
+
+Implemented the user-approved direction from the [inbox/process review](docs/reviews/2026-09-12-inbox-process-review.md) on `codex/implement-pursuit-inbox`.
+
+- `inbox-model.ts` separates incoming assessment, persisted pursuit stage, blockers, current work and explicit closure. Pure queue selectors replace the fixture-ID rules. Unknown worker state uses Recorded progress; tour stages use Tours scheduled. An unclosed decision remains active.
+- Public `/`: eight synthetic records, wide grouped rows, Active/All listings/Closed, Needs you shortcut, alternate map, action-first details, overview/conversation/activity, search/filter, pause/preferences and responsive detail navigation.
+- Demo answer/contact receipts preserve stage and do not send, verify or book anything. Contact candidates remain unverified. Undo, stop/restore and incoming dismissal are separate; dismissal cannot stop a pursuit.
+- `/dashboard`: session-validated, user-filtered Supabase SELECTs over user-listing relations, the one-to-one pursuit relation, events, Gmail health and profile. Password login lands here. No live mutation handler is called. Invalid source URL schemes are omitted. Unknown messages, next action and tour time are not fabricated.
+- The live reader is implemented but successful authenticated data loading, deployment/migrations and live RLS behavior remain unverified. The current importer still does not populate per-user feed records. Backend commands, reply contents and next-action/tour outcome contracts remain absent.
+- Verification: 72 backend tests plus 8 frontend projection/transition tests passed. Frontend typecheck, production build and targeted lint passed. `yarn lint` remains unavailable because the root script is absent. Anonymous `/dashboard` returns HTTP 307 to `/auth/login`.
+- Browser checks: desktop inbox; 375px layout with document width 375px; move-in receipt without stage advance; contact remains unverified; response focus moves to the receipt heading; stop/Closed/restore; assessment filters and non-match detail. No live mailbox/database access or migrations ran.
+
 ## Latest upstream integration
 
 Pulled `origin/main` through `f9b1b76` on 2026-09-12 into `codex/dashboard-first-pass`. Resolved the `CLAUDE.md` conflict by retaining upstream backend guidance and local dashboard context.
@@ -15,7 +27,7 @@ The review and dashboard verification sections below describe earlier snapshots;
 
 ## Inbox/process review — current source, 2026-09-12
 
-The [new review](docs/reviews/2026-09-12-inbox-process-review.md) maps the product process to the current schema and proposes the next UX iteration. It is a proposal, not an accepted contract or an application change.
+The [new review](docs/reviews/2026-09-12-inbox-process-review.md) maps the product process to the current schema and proposes the next UX iteration. Its UI direction was subsequently accepted and implemented above; the worker contract remains a proposal.
 
 - Runtime intake is CLI Gmail collection/cache, StreetEasy parsing and global listing import. The importer only fills missing brokerage on duplicate rental IDs; it does not refresh price/observation times or populate `user_listings`.
 - Broker enrichment is a standalone, tested service with source evidence, candidate contacts, readiness and execution outcomes. It is not wired to pursuits or the UI. `source_matched` validates apartment identity, not user preference matching; incomplete lookup is not a confirmed missing contact.
@@ -51,7 +63,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run lint -w frontend` | Frontend ESLint; no backend lint script |
 | `npm run build -w frontend` | Frontend production build |
 | `yarn lint` | Required convention; currently fails because root script is absent |
-| `yarn test` | Required convention; backend test discovery passes 72 schema/enrichment tests |
+| `yarn test` | Required convention; 72 backend tests and 8 frontend inbox tests pass |
 | `npm run sync` | Gmail message corpus discovery/cache workflow |
 | `npm run inspect -- <messageId>` | Inspect cached/raw mail; output can contain personal information |
 | `npm run survey -- --offline` | Cached corpus survey |
@@ -79,7 +91,7 @@ Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated 
 - Dependencies were installed with `npm ci` during the dashboard iteration. Live auth/database flows remain unverified. See the dashboard verification below for current frontend checks.
 - Documentation validation: local Markdown links and `git diff --check` are checked before committing. These checks do not establish application correctness.
 
-## Dashboard iteration verification
+## Earlier dashboard iteration verification
 
 Reference: read-only inspection of local `agentAI/src/app/page.tsx` and `globals.css`. After the earlier minimal single-page experiment, the user supplied a screenshot and requested agentAI as the starting point. The current revision adopts its floating window, muted listing rail, aligned pane headers, central map, and persistent right inspector. It does not port agentAI's backend or outreach integrations. OpenStreetMap replaces the Google Maps dependency for the demo overview.
 

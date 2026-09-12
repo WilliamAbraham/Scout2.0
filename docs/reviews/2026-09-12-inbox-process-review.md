@@ -1,6 +1,6 @@
 # Scout inbox and agent process review
 
-Date: 2026-09-12. Status: proposal for discussion, not an accepted implementation contract. Reviewed the product design, onboarding design, current backend source/schema, and current dashboard. No application behavior changed; no live mailbox or database was accessed.
+Date: 2026-09-12. Status: UI direction accepted and implemented; the live worker/command contract remains proposed. Reviewed the product design, onboarding design, current backend source/schema, and current dashboard. The initial review was read-only. The subsequent implementation adds the inbox model, layout and authenticated SELECT-only route described in [context.md](../../context.md); no live mailbox or database was accessed during implementation.
 
 ## Recommendation
 
@@ -36,7 +36,7 @@ The current importer does not populate the per-user feed or match results. Dupli
 
 ## Status model: progress, attention, and next action
 
-The schema's actual lifecycle is `matched → contacted → tour_scheduled → toured → applied → decided`, with `dead` as a stopped/terminal path. The hackathon prose instead names `ready_to_contact` and `closed`; those are not current enum values. Keep the existing enum as the integration baseline and resolve this vocabulary difference explicitly.
+The schema's actual lifecycle is `matched → contacted → tour_scheduled → toured → applied → decided`, with `dead` as a stopped/terminal path. A received decision is not automatically closed; a completed outcome must be recorded. The hackathon prose instead names `ready_to_contact` and `closed`; those are not current enum values. The implementation uses neutral Tours scheduled and Recorded progress groups when timing/work evidence is absent. Keep the existing enum as the integration baseline and resolve this vocabulary difference explicitly.
 
 | User-facing state | Existing record or proposed derivation | Evidence and next action |
 |---|---|---|

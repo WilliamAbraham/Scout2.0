@@ -12,11 +12,13 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 
 ## Dashboard preview
 
-Open `/` after starting the frontend. The dashboard follows the local agentAI reference: a compact inbox rail, a central Map / Photos / Activity workspace, and a persistent apartment detail pane. Rows are grouped into **Needs you**, **Tours scheduled**, **Waiting for broker**, **Found**, and **Closed**, with text search and All / Needs you / Found / Contacted filters. On mobile, Inbox / Map / Details navigation shows one pane at a time.
+Open `/` after starting the frontend for the interactive demo. The agentAI-inspired shell now puts a wide, grouped inbox in the main workspace and the selected apartment's current action at the top of its detail pane. Navigation separates **Active**, **All listings**, and **Closed**, with a **Needs you** shortcut. List/Map switches the main workspace; mobile opens details as a separate pane.
 
-Select an apartment to inspect its fit, unknowns, next step, and sample conversation. Confirm or suggest a move-in date, supply a missing broker email for verification, undo those changes, and stop/restore pursuits. Pause/resume and read-only search preferences live in the rail footer.
+The typed model distinguishes incoming assessment (Checking fit, Matched, Not a fit, Dismissed), pursuit stage, blockers, and explicit worker activity. Eight fictional examples cover intake, non-matches, contact research, queued outreach, broker waiting and tours. Answer and contact submissions create demo receipts; they preserve stage and never manufacture a sent reply, verified contact or booking. Undo, stop/restore pursuit, dismiss/restore incoming listing, pause, search, filters and read-only preferences are available.
 
-All apartments and activity are fictional fixtures. The map is an external OpenStreetMap area overview, requires network access, and deliberately has no fixture location pins. Photos have an explicit empty state; no original listing links are fabricated. Changes live in memory and reset on refresh. No backend commands or external messages are submitted. Existing auth routes remain available; live data integration awaits the shared pursuit/command contract.
+`/dashboard` adds an authenticated, read-only view over the existing Supabase `user_listings`, listing/pursuit/event, Gmail health and profile schema. Successful password login now lands there. Reads validate the session and filter by user ID under RLS; missing records and connection errors have explicit states. The deployment/population of those tables and successful live reads remain unverified. Live commands, messages and typed tour details need the backend worker contract and are not simulated in this view.
+
+Public demo data is synthetic and resets on refresh. The map is an external OpenStreetMap area overview without listing pins; it requires network access. No original photos or source links are fabricated. No email, calendar, database mutation or background worker action is submitted by these interfaces.
 
 ## Local development
 
@@ -35,4 +37,4 @@ npm run dev:web
 npm run dev:api
 ```
 
-The intended ports are 3000 for the frontend and 4000 for the backend. Root `yarn lint` currently has no script. `yarn test` passed all 72 backend schema/enrichment tests on 2026-09-12; this does not verify a connected agent pipeline.
+The intended ports are 3000 for the frontend and 4000 for the backend. Root `yarn lint` currently has no script. `yarn test` passed 72 backend tests and 8 frontend inbox tests on 2026-09-12; this does not verify a connected agent pipeline.
