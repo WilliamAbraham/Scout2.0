@@ -16,6 +16,7 @@
     "test": "npm run test --workspaces --if-present",
     "dev:web": "npm run dev -w @scout/frontend",
     "dev:api": "PORT=4000 npm run start -w @scout/backend",
-    "extract": "npm run extract -w backend"
+    "extract": "npm run extract -w backend",
+    "enrich": "node backend/scripts/enrichListing.ts"
   }
 }
