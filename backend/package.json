@@ -14,7 +14,7 @@
     "probe": "node scripts/probe.ts",
     "typecheck": "tsc",
     "extract": "node scripts/extract.ts",
-    "test": "node --test src/gmail/listings.test.ts"
+    "test": "node --test"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
