@@ -8,6 +8,10 @@ Scout aims to automate NYC apartment hunting from listing-alert emails through b
 - [Product design snapshot](docs/superpowers/specs/2026-09-12-scout-product-design.md): detailed proposal, updated with the hackathon split in §§8–9.
 - [Design review](docs/reviews/2026-09-12-product-design-review.md): blockers, contradictions, and proposed corrections. Recommendations are not yet accepted product decisions.
 
+## Backend completion ownership
+
+The remaining backend work is divided into [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). The first integrated milestone is one connected mailbox through real initial outreach; reply handling and follow-ups follow, with calendar, document release, and multi-user onboarding deferred. Each handoff defines file ownership, integration contracts, and acceptance checks. This is the current work split; it does not claim the backend is finished.
+
 ## Hackathon scope
 
 The user clarified that this is a hackathon project. Optimize the first milestone for a credible end-to-end demonstration, not production completeness. The full proposal remains the product vision; the review now distinguishes demo-critical correctness from later hardening. Recommended demo: one connected owner, StreetEasy alerts, matching, evidence-backed contact resolution, and one tour-request conversation. Calendar booking is the next extension; roommates, automatic sensitive-document release, and natural-language search can wait. This is a sequencing recommendation, not an implemented scope change.

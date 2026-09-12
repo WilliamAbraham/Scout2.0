@@ -2,6 +2,10 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Backend completion handoffs (2026-09-12)
+
+Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). These documents reflect a source audit, not a new live test. The worker still uses the older enrichment provider, refuses live sending, and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings, and restart-safe spending/delivery remain pending. Local uncommitted one-email runner/contact-adapter work must be coordinated with its author. No backend behavior changes or live sends were made for this documentation task. Validation: all 154 tests passed with Node type stripping enabled, documentation links and `git diff --check` passed, and `yarn lint` remained unavailable because no root lint script exists.
+
 ## Persisted worker pipeline (2026-09-12, branch `worktree-claude`)
 
 The worker now runs the whole alert path against Postgres in one cycle: Gmail alert sync → `listings`/`user_listings` upsert → deterministic match against `search_profiles` → `pursuits` row → broker enrichment → `contact_snapshot` or `needs_human: no_contact` → outreach turn. `backend/src/pipeline/postgresStore.ts` is the single persistence adapter (it implements the worker's `WorkerStore` and the alert stage's `AlertStore`); `backend/src/pipeline/match.ts` is the budget/bedroom hard filter; `backend/scripts/worker.ts` is the only entry point. `processAlerts.ts` and the file-based processed-id set were removed.

@@ -4,6 +4,8 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 
 ## Start here
 
+- Backend completion handoffs: [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). These are pending implementation assignments.
+
 - [Project](project.md): intended experience, architecture, scope, and work division.
 - [Engineering context](context.md): current implementation, setup, commands, check failures, and next work.
 - [Verified broker discovery](docs/enrichment/fatma-live-result-2026-09-12.md): original address-only input independently found Fatma Kara in 7.9 seconds for 0.34¢; personal contact details remain unverified.
