@@ -21,11 +21,14 @@ export function ownedBy(userIdColumn: AnyPgColumn): SQL {
 /**
  * The function's definition, kept beside the helper that calls it.
  *
- * drizzle-kit does not generate functions, so this is applied by hand at the
- * top of the migration that first creates the policies — they reference it, so
- * it has to exist before they are created. Reproduced here so the definition
- * lives with the code that depends on it, and so `schema.test.ts` can assert
- * the migration still contains it.
+ * drizzle-kit does not generate functions, so this one is written by hand in
+ * `drizzle/0001_scout_owns.sql` — a migration of its own, ahead of the
+ * generated migration that creates the policies. That ordering is what makes
+ * `db:generate` safe to re-run: regenerating the schema migration cannot drop
+ * a definition that lives in an earlier file.
+ *
+ * Reproduced here so the definition sits with the code depending on it;
+ * `schema.test.ts` fails if the two drift.
  */
 export const SCOUT_OWNS_FUNCTION = `create or replace function public.scout_owns(owner_id uuid)
 returns boolean

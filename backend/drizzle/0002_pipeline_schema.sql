@@ -1,25 +1,3 @@
--- Hand-written preamble. drizzle-kit does not generate functions, and every
--- policy below calls this one, so it has to be created first. Kept in sync
--- with SCOUT_OWNS_FUNCTION in src/db/schema/rls.ts.
---
--- Tenancy is keyed on user_id today. Roommates (a shared search with several
--- members) will change the predicate to a membership lookup; routing every
--- policy through this function means that change is a CREATE OR REPLACE here
--- rather than a rewrite of ~15 policies and the frontend queries behind them.
---
--- `search_path = ''` forces fully-qualified names inside the body, so a table
--- planted in a caller-controlled schema cannot shadow anything it reads.
--- `security invoker` keeps it running as the caller. The scalar subquery around
--- auth.uid() lets Postgres hoist it to an initPlan instead of re-evaluating it
--- once per row.
-create or replace function public.scout_owns(owner_id uuid)
-returns boolean
-language sql
-stable
-security invoker
-set search_path = ''
-as $$ select owner_id = (select auth.uid()) $$;
---> statement-breakpoint
 CREATE TYPE "public"."needs_human_reason" AS ENUM('no_contact', 'unanswerable_question', 'no_fitting_slot', 'portal_link', 'missing_document', 'decision');--> statement-breakpoint
 CREATE TYPE "public"."pursuit_stage" AS ENUM('matched', 'contacted', 'tour_scheduled', 'toured', 'applied', 'decided', 'dead');--> statement-breakpoint
 CREATE TABLE "user_listings" (

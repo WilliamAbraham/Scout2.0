@@ -31,32 +31,41 @@ import {
 
 const MIGRATIONS_DIR = path.join(REPO_ROOT, 'backend/drizzle');
 
-function latestMigration(): string {
-  const files = readdirSync(MIGRATIONS_DIR)
+/** Every migration, in the order the migrator applies them. */
+function migrations(): Array<{name: string; sql: string}> {
+  return readdirSync(MIGRATIONS_DIR)
     .filter(name => name.endsWith('.sql'))
-    .sort();
-  const last = files.at(-1);
-  assert.ok(last, 'expected at least one generated migration');
-  return readFileSync(path.join(MIGRATIONS_DIR, last), 'utf8');
+    .sort()
+    .map(name => ({name, sql: readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8')}));
 }
 
-test('the migration defines scout_owns before any policy uses it', () => {
-  const sql = latestMigration();
-  const definedAt = sql.indexOf('create or replace function public.scout_owns');
-  const firstPolicyAt = sql.indexOf('CREATE POLICY');
+test('scout_owns is created in a migration of its own, before any policy', () => {
+  const all = migrations();
+  const definesFunction = all
+    .findIndex(file => file.sql.includes('function public.scout_owns'));
+  const firstPolicy = all.findIndex(file => file.sql.includes('CREATE POLICY'));
 
-  assert.notEqual(definedAt, -1,
-    'scout_owns is missing: drizzle-kit does not generate functions, so the ' +
-    'preamble must be re-applied by hand after regenerating this migration');
-  assert.ok(firstPolicyAt > definedAt,
-    'scout_owns must be created before the policies that call it');
+  assert.notEqual(definesFunction, -1, 'no migration defines scout_owns');
+  assert.notEqual(firstPolicy, -1, 'no migration creates any policy');
+
+  // The function is hand-written, because drizzle-kit does not generate
+  // functions. Keeping it in its own earlier migration is what stops a
+  // `db:generate` from silently dropping it.
+  assert.ok(definesFunction < firstPolicy,
+    `scout_owns is defined in ${all[definesFunction]?.name}, which the migrator ` +
+    `applies after ${all[firstPolicy]?.name} creates the policies that call it`);
+  assert.ok(!all[firstPolicy]?.sql.includes('function public.scout_owns'),
+    'the generated schema migration must not carry the function: regenerating ' +
+    'it would drop the definition every policy depends on');
 });
 
-test('the hand-written function matches the one recorded in rls.ts', () => {
+test('the migrated function matches the one recorded in rls.ts', () => {
   // Both copies exist so the definition sits next to the code that depends on
   // it. They drift silently unless something compares them.
   const normalize = (value: string) => value.replace(/\s+/g, ' ').trim();
-  assert.ok(normalize(latestMigration()).includes(normalize(SCOUT_OWNS_FUNCTION)));
+  const combined = normalize(migrations().map(file => file.sql).join('\n'));
+  assert.ok(combined.includes(normalize(SCOUT_OWNS_FUNCTION)),
+    'rls.ts and the migration disagree about how scout_owns is defined');
 });
 
 test('the listings policy names the user_listings table correctly', () => {
@@ -98,8 +107,8 @@ test('every tenant table enables RLS and scopes its policies to the owner', () =
 
   // Asserted against the emitted SQL rather than drizzle's internal query
   // chunks: this is the text Postgres actually enforces.
-  const statements = latestMigration()
-    .split('--> statement-breakpoint')
+  const statements = migrations()
+    .flatMap(file => file.sql.split('--> statement-breakpoint'))
     .filter(statement => statement.includes('CREATE POLICY'));
 
   assert.ok(statements.length >= 12, 'expected a policy per tenant operation');

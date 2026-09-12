@@ -12,8 +12,15 @@
     {
       "idx": 1,
       "version": "7",
-      "when": 1789242510835,
-      "tag": "0001_pipeline_schema",
+      "when": 1789242942289,
+      "tag": "0001_scout_owns",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789242951742,
+      "tag": "0002_pipeline_schema",
       "breakpoints": true
     }
   ]

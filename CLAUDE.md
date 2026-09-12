@@ -61,7 +61,7 @@ The schema is the coordination point between the backend agent and the dashboard
 
 - **Every tenant table has RLS enabled, and every policy calls `scout_owns(user_id)`.** The frontend authenticates with the publishable key — which ships in the browser bundle — so a `public` table without policies is an open table. `scout_owns` is a hand-written SQL function in the migration preamble (drizzle-kit does not generate functions); it exists so that adding roommates later is a `CREATE OR REPLACE` rather than a rewrite of every policy. Keep it in sync with `SCOUT_OWNS_FUNCTION` in `src/db/schema/rls.ts` — `src/db/schema.test.ts` fails if they drift.
 - **`gmail_tokens` and `processed_messages` have RLS enabled and zero policies.** That denies everything arriving through PostgREST while the worker, connecting as table owner over `DATABASE_URL`, bypasses RLS. Never add a policy to them, and never mark them `FORCE ROW LEVEL SECURITY` — that would lock out the worker too.
-- **After `db:generate`, re-apply the migration preamble by hand.** Regenerating drops it; the tests catch this.
+- **`scout_owns` lives in its own migration** (`drizzle/0001_scout_owns.sql`), ahead of the generated one that creates the policies. That is what makes `db:generate` safe to re-run — a regenerated schema migration cannot drop a definition held in an earlier file. Never fold the function into a generated migration.
 
 Two enums (`pursuit_stage`, `needs_human_reason`) are the frontend contract: every `needs_human_reason` value needs a matching resolve-flow in the dashboard's **Needs you** queue.
 

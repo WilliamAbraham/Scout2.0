@@ -37,12 +37,17 @@ async function loadSavedToken(): Promise<Auth.UserRefreshClient | null> {
   }
 }
 
+/** The OAuth client id and secret from the downloaded console credentials. */
+async function readClientKey(): Promise<{client_id: string; client_secret: string}> {
+  const keys = JSON.parse(await readFile(CREDENTIALS_PATH, 'utf8'));
+  return keys.installed ?? keys.web;
+}
+
 /**
  * Persist the refresh token so later runs skip the browser consent screen.
  */
-async function saveToken(client: Auth.OAuth2Client) {
-  const keys = JSON.parse(await readFile(CREDENTIALS_PATH, 'utf8'));
-  const key = keys.installed ?? keys.web;
+async function saveToken(refreshToken: string) {
+  const key = await readClientKey();
 
   await writeFile(
     TOKEN_PATH,
@@ -50,7 +55,7 @@ async function saveToken(client: Auth.OAuth2Client) {
       type: 'authorized_user',
       client_id: key.client_id,
       client_secret: key.client_secret,
-      refresh_token: client.credentials.refresh_token,
+      refresh_token: refreshToken,
     }),
     // Owner-only: this file grants read access to the whole mailbox.
     {encoding: 'utf8', mode: 0o600},
@@ -67,18 +72,35 @@ export async function getGmailClient(): Promise<gmail_v1.Gmail> {
     return google.gmail({version: 'v1', auth: saved});
   }
 
-  const client = await authenticate({
+  const consented = await authenticate({
     scopes: SCOPES,
     keyfilePath: CREDENTIALS_PATH,
   });
+
+  // `@google-cloud/local-auth` resolves google-auth-library@8 while
+  // `googleapis` uses @10, and the two OAuth2Client classes are not
+  // structurally compatible — passing one to `google.gmail()` does not
+  // typecheck. Carry the credentials across the boundary instead of the
+  // client object; they are plain JSON and identical in both versions.
+  //
+  // This goes away when per-user OAuth moves into the database: local-auth
+  // runs a loopback server against the local browser and cannot serve a
+  // multi-tenant backend at all.
+  const key = await readClientKey();
+  const client = new Auth.OAuth2Client({
+    clientId: key.client_id,
+    clientSecret: key.client_secret,
+  });
+  client.setCredentials(consented.credentials);
 
   // A client that came back without a refresh token can still make this
   // run's calls, it just can't be replayed later — so don't save it. Google
   // withholds one when this client is already authorized for the account,
   // which is silent and leaves every future run stuck at the consent screen.
   // Say so rather than letting the missing token.json look like a bug.
-  if (client.credentials.refresh_token) {
-    await saveToken(client);
+  const refreshToken = consented.credentials.refresh_token;
+  if (refreshToken) {
+    await saveToken(refreshToken);
   } else {
     console.warn(
       `Google returned no refresh token, so ${TOKEN_PATH} was not written ` +
