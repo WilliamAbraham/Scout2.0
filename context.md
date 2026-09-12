@@ -68,6 +68,8 @@ Reference: read-only inspection of the local `agentAI/src/app/page.tsx` and `glo
 - Visual inspection: desktop and 375px mobile. Document width matched the viewport at 375px and 812px landscape. OS text scaling and full keyboard traversal were not exercised.
 - No live auth, persistence, ingestion, outreach, or calendar integration tested. The public homepage contains only synthetic fixtures; keep it that way until authenticated live-data integration is designed.
 
+Delivery: committed on `codex/dashboard-first-pass`. Push to `origin` returned HTTP 403: signed-in GitHub account `ktpeii` lacks write access to `WilliamAbraham/Scout2.0`. The branch is local only and no PR was created; push and PR remain pending repository access.
+
 Next dashboard work: iterate with user feedback, agree the pursuit/command contract with pipeline owner A, then replace fixtures with authorized persisted results. Map view and command submission are not implemented.
 
 ## Hackathon clarification
