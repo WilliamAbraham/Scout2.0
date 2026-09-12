@@ -51,8 +51,8 @@ Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated 
 - Local runtime: Node `v24.11.1`, npm `11.14.1`, Yarn `1.22.22`.
 - `yarn lint`: failed, missing root lint script.
 - `yarn test`: failed, missing backend test file; no tests executed.
-- `npm run lint -w frontend`: failed, `eslint` not installed.
-- Dependencies are absent locally. Typecheck/build and live auth/database flows are not verified; no dependency installation was performed for this documentation-only review.
+- Frontend ESLint now uses the Next.js flat configuration directly; the previous FlatCompat bridge failed with a circular-JSON error after installation. ESLint runs, but reports existing violations in `components/theme-switcher.tsx` (`set-state-in-effect`) and `tailwind.config.ts` (`no-require-imports`).
+- Dependencies were installed with `npm ci` during the dashboard iteration. Live auth/database flows remain unverified. See the dashboard verification below for current frontend checks.
 - Documentation validation: local Markdown links and `git diff --check` are checked before committing. These checks do not establish application correctness.
 
 ## Hackathon clarification
