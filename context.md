@@ -12,6 +12,15 @@ Merged upstream `ce8c8df` into `codex/implement-pursuit-inbox`. The incoming cha
 - Verification: 72 backend and 8 frontend tests passed, plus direct parser assertions for valid/blank values, malformed numbers, bounds, availability, summaries and the field whitelist. Browser checks covered signed-out sample, an editable sample, malformed and inverted rent values with preserved input, adding/removing windows at 375px, a first-profile empty form, and a blocked form after a failed read. The temporary sample QA route was removed. No live profile was written; authenticated persistence and deployed RLS remain unverified.
 - Frontend typecheck, targeted ESLint and production build passed. Root `yarn lint` remains unavailable. Full frontend lint retains the two existing violations in `components/theme-switcher.tsx` and `tailwind.config.ts`.
 
+### Unmerged worker branch reviewed
+
+The final fetch also found [PR #5](https://github.com/WilliamAbraham/Scout2.0/pull/5), `origin/codex/enrichment-cost-benchmark` at `97217cf`. Its parent `3aaac3c` adds outreach, alert processing and an inbox watcher. This branch was inspected read-only and is not merged into the frontend branch.
+
+- New `next_follow_up_at` and `follow_up_count` schema fields could support scheduled-follow-up details once migrated and populated.
+- `WorkerStore` declares persistence operations, but its executable currently supplies an empty in-memory store; mail, calendar and availability ports are stubs. An `outreach_sent` return from this path does not establish a Gmail send.
+- The alert script uses a blank agent profile. A backend adapter must translate saved `search_profiles` criteria and structured tour windows into the agent profile. Pipeline reasons such as `owner_listed` and `enrichment_incomplete` also need a mapping to persisted assessment/blocker values.
+- No new working frontend endpoint or persisted worker-state contract was found. Keep live pursuit actions disabled and preserve unknown work state until the store/service adapters and mappings land. No benchmark, mailbox or worker command was run during this inspection.
+
 ## Current inbox implementation — 2026-09-12
 
 Implemented the user-approved direction from the [inbox/process review](docs/reviews/2026-09-12-inbox-process-review.md) on `codex/implement-pursuit-inbox`.
