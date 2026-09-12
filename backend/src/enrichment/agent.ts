@@ -8,7 +8,7 @@ import path from 'node:path';
 import {resolveDirect} from './sources.ts';
 import type {ContactRoute} from './sources.ts';
 import {EnrichmentBudget} from './spend.ts';
-import {canonicalListingUrl, readListingPage} from './listingPage.ts';
+import {canonicalListingUrl, candidateListingUrl, readListingPage} from './listingPage.ts';
 import type {ListingPage} from './listingPage.ts';
 import {normalizeAddress, normalizeUnit} from './service.ts';
 import type {EmailListing} from './service.ts';
@@ -80,7 +80,7 @@ export interface AgentOptions {
 
 export const AGENT_MODEL = 'openai/gpt-4.1-mini';
 export const REQUEST_ALLOWANCE_USD = 0.02;
-const CACHE_VERSION = 'listing-retrieval-v2';
+const CACHE_VERSION = 'listing-evidence-v3';
 const inFlight = new Map<string, Promise<AgentEnrichmentResult>>();
 
 const rules = `You research public business contacts for NYC rental listings. Use supplied evidence and the available search tool, not memory.
@@ -151,6 +151,21 @@ function validContact(contact: Contact | null, kind: 'email' | 'phone', citation
   return {...contact, value};
 }
 
+function validPersonalContact(contact: Contact | null, kind: 'email' | 'phone', agent: ResearchedAgent, citations: Citation[]): Contact | null {
+  const validated = validContact(contact, kind, citations, agent.notes);
+  if (!validated) return null;
+  const source = citations.find(c => urlKey(c.url) === urlKey(validated.evidence.url));
+  const text = ` ${normalizeAddress(source?.content ?? '')} `;
+  const namesAgent = text.includes(` ${normalizeAddress(agent.name)} `);
+  const namesBrokerage = text.includes(` ${normalizeAddress(agent.brokerage)} `);
+  const exactListingSource = urlKey(validated.evidence.url) === urlKey(agent.attribution.url);
+  if (!namesAgent || (!namesBrokerage && !exactListingSource)) {
+    agent.notes.push(`Rejected personal ${kind}: source does not establish this agent at the listing brokerage.`);
+    return null;
+  }
+  return validated;
+}
+
 export async function enrichWithAgent(input: EmailListing, options: AgentOptions): Promise<AgentEnrichmentResult> {
   if (input.listingUrl) input = {...input, listingUrl: canonicalListingUrl(input.listingUrl)!};
   // Never reuse a different unit, price, brokerage, model, or screenshot's result.
@@ -190,7 +205,8 @@ export async function enrichWithAgent(input: EmailListing, options: AgentOptions
 }
 
 async function runAgent(input: EmailListing, options: AgentOptions): Promise<AgentEnrichmentResult> {
-  const listingUrl = canonicalListingUrl(input.listingUrl);
+  const suppliedUrl = canonicalListingUrl(input.listingUrl);
+  const listingUrl = suppliedUrl ?? candidateListingUrl(input);
   const model = options.model ?? AGENT_MODEL;
   if (model !== AGENT_MODEL) throw new Error(`Cost-controlled enrichment only permits ${AGENT_MODEL}; no automatic premium-model fallback`);
   if (options.searchEngine && options.searchEngine !== 'parallel') throw new Error('Cost-controlled enrichment requires Parallel search');
@@ -202,15 +218,22 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
   const result: AgentEnrichmentResult = {
     input, model, searchEngine: 'parallel',
     inputMode: options.listingImage ? 'listing_facts_and_image' : 'listing_facts', checkedAt: new Date().toISOString(), execution: 'partial',
-    listingStatus: 'unresolved', listingUrl: listingUrl ?? null, agents: [], officeContacts: [], directContacts: [], notes: [], stages: [],
+    listingStatus: 'unresolved', listingUrl: suppliedUrl ?? null, agents: [], officeContacts: [], directContacts: [], notes: [], stages: [],
     cost: {reportedUsd: 0, cacheHit: false, budgetLimitUsd: budget.limitUsd},
     evidencePolicy: 'model_reported_with_provider_citations; human_review_before_outreach',
   };
   let listingPage: ListingPage | undefined;
   if (listingUrl) {
     try {
-      listingPage = await readListingPage(listingUrl, options.fetch ?? fetch);
-      result.notes.push('Read supplied listing URL before broker discovery.');
+      const page = await readListingPage(listingUrl, options.fetch ?? fetch);
+      const heading = /^(.*?)\s+#(.+)$/.exec(page.heading ?? '');
+      if (!heading || normalizeAddress(heading[1]!) !== normalizeAddress(input.address)
+        || normalizeUnit(heading[2]!) !== normalizeUnit(input.unit)) throw new Error('Listing page heading does not match the exact address and unit');
+      if (page.price !== undefined && page.price !== input.price) throw new Error('Listing page price conflicts with the input; possible stale listing');
+      listingPage = page;
+      result.listingUrl = page.url;
+      result.notes.push(suppliedUrl ? 'Read supplied listing URL before broker discovery.'
+        : 'Read an address-derived candidate URL and verified the exact listing heading before discovery.');
     } catch (error) {result.notes.push(`Listing page read failed; falling back to search: ${safeError(error)}`);}
   }
   // Direct adapters cost no model/search credits. They supplement discovery; an
@@ -240,12 +263,13 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
       {type: 'image_url', image_url: {url: image.dataUrl, detail: 'high'}},
     ] : prompt;
     if (Buffer.byteLength(prompt, 'utf8') > 12_000) throw new Error('Research context exceeds 12 KB; retained roster needs review');
+    const useSearch = !(stage === 'discovery' && (listingPage || options.listingImage));
     const request = {
       model: result.model, max_completion_tokens: 2500,
       messages: [{role: 'system' as const, content: `${rules}\nThe required output JSON schema is: ${JSON.stringify(format.json_schema.schema)}`}, {role: 'user' as const, content}],
-      tools: [
+      ...(useSearch ? {tools: [
         {type: 'openrouter:web_search', parameters: {engine: 'parallel', mode: 'fast', max_results: 3, max_uses: 2, max_total_results: 6, max_characters: 1500}},
-      ] as unknown as NonNullable<ChatCompletionCreateParamsNonStreaming['tools']>,
+      ] as unknown as NonNullable<ChatCompletionCreateParamsNonStreaming['tools']>, tool_choice: 'required' as const} : {}),
       max_tool_calls: maxToolCalls,
       provider: {sort: 'price', allow_fallbacks: false, require_parameters: true, max_price: {prompt: 0.4, completion: 1.6}},
       response_format: format,
@@ -281,8 +305,8 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
         && p.attribution.url === options.listingImage.sourceId && !!p.attribution.excerpt.trim();
       const source = citations.find(c => urlKey(c.url) === urlKey(p.attribution.url));
       const normalized = ` ${normalizeAddress(source?.content ?? '')} `;
-      const supported = cited(p.attribution, citations) && (!source?.content ||
-        [p.name, input.address, input.unit].every(value => normalized.includes(` ${normalizeAddress(value)} `)));
+      const supported = cited(p.attribution, citations) && !!source?.content &&
+        [p.name, input.address, input.unit].every(value => normalized.includes(` ${normalizeAddress(value)} `));
       const candidate: ResearchedAgent = {...p, id: `agent-${result.agents.length + 1}`,
         attributionStatus: fromImage ? 'provided_image' : identityMatches && supported ? 'source_cited' : 'needs_review',
         email: null, phone: null, notes: !identityMatches ? ['Address or unit conflict; candidate only.']
@@ -329,17 +353,30 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
     return result;
   }
   try {
-    const compactRoster = result.agents.map(a => ({id: a.id, name: a.name, brokerage: a.brokerage, attributionUrl: a.attribution.url}));
+    const compactRoster = result.agents.filter(a => a.attributionStatus !== 'needs_review').map(a => ({id: a.id, name: a.name, brokerage: a.brokerage, attributionUrl: a.attribution.url}));
     const contacts = await research('contacts', `Find public email and phone for every retained person. Preserve IDs and names. Never guess emails. Keep office contacts separate. If no people, find only the named brokerage or owner channel. Input: ${JSON.stringify(input)}\nRoster: ${JSON.stringify(compactRoster)}`, contactsSchema);
     for (const person of contacts.data.agents) {
       const agent = result.agents.find(a => a.id === person.id);
-      if (!agent) {result.notes.push(`Ignored unknown contact-stage ID: ${person.id}`); continue;}
+      if (!agent || agent.attributionStatus === 'needs_review') {result.notes.push(`Ignored unknown or unsupported contact-stage ID: ${person.id}`); continue;}
       agent.notes.push(...person.notes);
-      agent.email = validContact(person.email, 'email', contacts.citations, agent.notes);
-      agent.phone = validContact(person.phone, 'phone', contacts.citations, agent.notes);
+      agent.email = validPersonalContact(person.email, 'email', agent, contacts.citations);
+      agent.phone = validPersonalContact(person.phone, 'phone', agent, contacts.citations);
     }
     result.officeContacts.push(...contacts.data.officeContacts.map(office => ({...office,
       email: validContact(office.email, 'email', contacts.citations, result.notes), phone: validContact(office.phone, 'phone', contacts.citations, result.notes)})));
+    for (const agent of result.agents) {
+      for (const kind of ['email', 'phone'] as const) {
+        const contact = agent[kind];
+        if (!contact) continue;
+        const normalize = (value: string) => kind === 'email' ? value.trim().toLowerCase() : value.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+        const officeValue = result.officeContacts.some(o => o[kind] && normalize(o[kind]!.value) === normalize(contact.value));
+        const genericEvidence = /(?:general|head|corporate|brokerage) office|office (?:email|phone)|general (?:inquiries|contact)/i.test(`${contact.evidence.excerpt} ${agent.notes.join(' ')}`);
+        if (officeValue || genericEvidence) {
+          agent[kind] = null;
+          agent.notes.push(`Excluded ${kind} from personal contacts: evidence identifies a generic office channel.`);
+        }
+      }
+    }
     result.notes.push(...contacts.data.notes);
     result.execution = discoveryIncomplete ? 'partial' : 'completed';
     await options.save?.('contacts', result, contacts.raw);

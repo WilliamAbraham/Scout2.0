@@ -16,13 +16,19 @@ The worker now runs the whole alert path against Postgres in one cycle: Gmail al
 Verified live on 2026-09-12: two cycles ingested two alerts (nine listings, nine pursuits, all `no_contact` because enrichment found no verified email), a third cycle composed one draft for a pursuit seeded with an `example.com` contact, and a fourth cycle composed nothing new. `npm run typecheck` and all 135 backend tests pass; the backend `test` script now discovers every `src/**/*.test.ts`.
 
 Next for A: real `sendMail` via Gmail (needs the `gmail.send` scope and re-consent), per-user tokens from `gmail_tokens`, reply routing in `syncUser`, then flip the worker out of dry-run.
+## Latest verified broker discovery
+
+The revised OpenRouter agent independently identified **Fatma Kara / FIND Real Estate for 620 East 6th Street #9A** from the original address-only input on 2026-09-12. It generated one candidate StreetEasy URL, read the live page, validated its heading and available rent, and extracted the actual Listed by section. No expected name, manually injected source, or screenshot was supplied. Two paid calls (one hosted contact search) cost **$0.003407284, or 0.34¢**, in 7.882 seconds. A later offline replay verified rejection of an email tied to a conflicting brokerage. Personal email/phone remain unverified. See the [live result](docs/enrichment/fatma-live-result-2026-09-12.md).
+
+Search is required when source evidence is absent; citation text must actually support broker attribution. Unsupported candidates are excluded from contact lookup. Personal contacts require agent/brokerage evidence and cannot duplicate generic office values. Cache policy is `listing-evidence-v3`. All 154 tests and enrichment TypeScript checks pass; root lint remains unavailable. The worker still uses its existing BrokerEnrichment provider. This successful unit-level test does not establish general batch recall.
+
 ## Latest enrichment cost test
 
 On 2026-09-12, an approved $0.10 test processed all four listings from a different StreetEasy recommendation email with GPT-4.1 Mini / Parallel fast and a fresh local cache. Actual API-reported spend was $0.020800404 total (0.52¢ per listing), over eight stage requests and approximately 45 seconds. No named brokers were found; three listings returned generic company contact channels and one returned no contact details. This is a cost measurement, not successful listing-agent enrichment. See the [benchmark report](docs/enrichment/mini-cost-benchmark-2026-09-12.md).
 
 The subsequent 620 East 6th Street #9A test cost $0.006410748 and missed Fatma Kara, visible in the user's listing screenshot. The OpenRouter agent now preserves optional listing URLs, attempts a bounded direct HTML read, and enforces one budgeted discovery recovery stage when no supported broker is found. Available source text must support the broker name, address and unit. The Gmail input adapter forwards the URL; the outreach runner still uses its existing BrokerEnrichment service, not this agent. See [retrieval behavior and limitations](docs/enrichment/openrouter-agent.md#retrieval-upgrade-2026-09-12).
 
-The upgrade passes all 135 offline tests and the enrichment TypeScript check. `yarn lint` was attempted but the root lint script is still absent. An approved fresh rerun of the upgraded agent cost $0.008392432 (0.84¢) across three stages and four reported searches, and still missed Fatma Kara. Two unsupported candidates were flagged needs_review; one source was a different property. The contact stage also duplicated generic office values under a candidate, exposing an ownership-validation defect. The original input lacked a URL, so direct-page retrieval was not exercised. See the [live regression report](docs/enrichment/openrouter-agent.md#live-regression-result-2026-09-12). Earlier 0.52¢/listing figures describe the old two-stage configuration. Raw email and API artifacts remain in ignored `data/` directories.
+The earlier upgrade passed all 135 offline tests and the enrichment TypeScript check. `yarn lint` was attempted but the root lint script is still absent. An approved fresh rerun of the upgraded agent cost $0.008392432 (0.84¢) across three stages and four reported searches, and still missed Fatma Kara. Two unsupported candidates were flagged needs_review; one source was a different property. The contact stage also duplicated generic office values under a candidate, exposing an ownership-validation defect. The original input lacked a URL, so direct-page retrieval was not exercised. See the [live regression report](docs/enrichment/openrouter-agent.md#live-regression-result-2026-09-12). Earlier 0.52¢/listing figures describe the old two-stage configuration. Raw email and API artifacts remain in ignored `data/` directories.
 
 ## Latest upstream integration
 
@@ -62,7 +68,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run lint -w frontend` | Frontend ESLint; no backend lint script |
 | `npm run build -w frontend` | Frontend production build |
 | `yarn lint` | Required convention; currently fails because root script is absent |
-| `yarn test` | Required convention; passes 135 tests after the retrieval upgrade |
+| `yarn test` | Required convention; passes 154 tests after the broker discovery fix |
 | `npm run sync` | Gmail message corpus discovery/cache workflow |
 | `npm run inspect -- <messageId>` | Inspect cached/raw mail; output can contain personal information |
 | `npm run survey -- --offline` | Cached corpus survey |

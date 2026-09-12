@@ -16,6 +16,7 @@ const contacts = {agents: [], officeContacts: [], notes: []};
 function mock(cost: number | undefined = 0.001) {
   const requests: Record<string, unknown>[] = [];
   const options: AgentOptions = {apiKey: 'offline', budget: new EnrichmentBudget(0.2), fetch: async (_url, init) => {
+    if (String(_url).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
     const body = JSON.parse(String(init?.body)); requests.push(body);
     const data = body.response_format.json_schema.name !== 'broker_contacts' ? roster : contacts;
     return Response.json({id: 'offline', choices: [{finish_reason: 'stop', message: {content: JSON.stringify(data),

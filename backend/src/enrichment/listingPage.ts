@@ -14,7 +14,20 @@ export function canonicalListingUrl(value: unknown): string | undefined {
   return url.href;
 }
 
-export interface ListingPage {url: string; content: string}
+// A single conventional URL is only a retrieval candidate. The caller must
+// verify the returned page heading; never treat a generated URL as evidence.
+export function candidateListingUrl(input: {address: string; unit: string; city: string}): string | undefined {
+  if (!/^new york(?: city)?$/i.test(input.city.trim()) || !/^[a-z0-9-]+$/i.test(input.unit)) return undefined;
+  const address = input.address.toLowerCase().trim()
+    .replace(/\b(\d+)(?:st|nd|rd|th)\b/g, '$1')
+    .replace(/\b(e|w|n|s|st|ave|pl)\.?(?=\s|$)/g,
+      word => ({e: 'east', w: 'west', n: 'north', s: 'south', st: 'street', ave: 'avenue', pl: 'place'}[word.replace('.', '')]!));
+  if (!/^\d+[a-z]? [a-z0-9 .'-]+$/.test(address)) return undefined;
+  const slug = address.replace(/[^a-z0-9]+/g, '-').replace(/-$/, '');
+  return `https://streeteasy.com/building/${slug}-new_york/${input.unit.toLowerCase()}`;
+}
+
+export interface ListingPage {url: string; content: string; heading?: string; price?: number}
 
 export function listingPageText(html: string): string {
   const $ = load(html);
@@ -31,7 +44,7 @@ export function listingPageText(html: string): string {
   // Keep the roster even when a long description precedes it. The heading is
   // included separately so the model can check address AND unit against it.
   const roster = /listed\s+by/i.exec(text);
-  const excerpt = roster ? text.slice(Math.max(0, roster.index - 200), roster.index + 5000) : text.slice(0, 5000);
+  const excerpt = roster ? text.slice(Math.max(0, roster.index - 200), roster.index + 5000).split(/About the building|Property history|Similar homes/i)[0]! : text.slice(0, 5000);
   return `${title}\n${headings}\n${excerpt}`.trim();
 }
 
@@ -66,7 +79,10 @@ export async function readListingPage(value: string, fetcher: typeof fetch = fet
     if (!content || /(?:verify (?:that )?you are human|press (?:&|and) hold|access (?:to this page has been )?denied|captcha)/i.test(content)) {
       throw new Error('Listing page blocked or empty');
     }
-    return {url, content};
+    const $ = load(Buffer.concat(chunks).toString('utf8'));
+    const priceText = $('h4').first().text().trim();
+    const price = /^\$[\d,]+$/.test(priceText) ? Number(priceText.replace(/[$,]/g, '')) : undefined;
+    return {url, content, heading: $('h1').first().text().trim(), ...(price !== undefined ? {price} : {})};
   }
   throw new Error('Listing redirect limit reached');
 }

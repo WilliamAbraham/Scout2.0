@@ -53,3 +53,26 @@ test('redirect to the exact StreetEasy unit returns the final citation URL', asy
   assert.equal(page.url, finalUrl);
   assert.match(page.content, /Fatma Kara/);
 });
+
+test('address-derived candidate URL is generic and preserves unit order', async () => {
+  const {candidateListingUrl} = await import('./listingPage.ts');
+  assert.equal(candidateListingUrl({address: '620 E. 6th St.', unit: '9A', city: 'New York'}),
+    'https://streeteasy.com/building/620-east-6-street-new_york/9a');
+  assert.equal(candidateListingUrl({address: '118 Mulberry Street', unit: 'R4', city: 'New York'}),
+    'https://streeteasy.com/building/118-mulberry-street-new_york/r4');
+  assert.equal(candidateListingUrl({address: '248 Mott Street', unit: '6-5', city: 'New York'}),
+    'https://streeteasy.com/building/248-mott-street-new_york/6-5');
+  assert.equal(candidateListingUrl({address: '620 East 6th Street', unit: '../other', city: 'New York'}), undefined);
+  assert.equal(candidateListingUrl({address: '620 East 6th Street', unit: '9A', city: 'Ashtabula'}), undefined);
+});
+
+test('recorded live StreetEasy markup preserves the exact unit, rent and listing broker', async () => {
+  const {readFile} = await import('node:fs/promises');
+  const html = await readFile(new URL('../../fixtures/enrichment/620-east-6th-9a.html', import.meta.url), 'utf8');
+  const page = await readListingPage('https://streeteasy.com/building/620-east-6-street-new_york/9a', async () =>
+    new Response(html, {headers: {'content-type': 'text/html'}}));
+  assert.equal(page.heading, '620 East 6th Street #9A');
+  assert.equal(page.price, 6995);
+  assert.match(page.content, /Listed by Fatma Kara/);
+  assert.match(page.content, /https:\/\/streeteasy.com\/profile\/942807/);
+});

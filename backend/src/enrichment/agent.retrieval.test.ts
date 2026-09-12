@@ -41,6 +41,7 @@ test('supplied listing page is read before discovery and its evidence supports t
 test('empty discovery forces an alternate lookup before contacts; initial prompt has no seeded name', async () => {
   const stages: string[] = [];
   const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.05), fetch: async (_target, init) => {
+    if (String(_target).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
     const body = JSON.parse(String(init?.body));
     const stage = body.response_format.json_schema.name; stages.push(stage);
     if (stage === 'broker_discovery') {
@@ -63,7 +64,8 @@ test('empty discovery forces an alternate lookup before contacts; initial prompt
 
 test('wrong-city citation cannot validate a model-claimed broker; recovery obeys the budget', async () => {
   let calls = 0;
-  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.02), fetch: async () => {
+  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.02), fetch: async target => {
+    if (String(target).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
     calls++; return response(roster, '620 E 6th St Ashtabula OH');
   }});
   assert.equal(calls, 1);
@@ -91,6 +93,7 @@ test('blocked listing page falls back to search without passing challenge text a
 test('no-broker recovery is bounded and never claims an office route is a broker', async () => {
   let calls = 0;
   const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.1), fetch: async (_target, init) => {
+    if (String(_target).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
     calls++;
     const body = JSON.parse(String(init?.body));
     return response(body.response_format.json_schema.name === 'broker_contacts' ? contacts : {...empty, listingStatus: 'team_only'});
@@ -102,7 +105,8 @@ test('no-broker recovery is bounded and never claims an office route is a broker
 
 test('retry upgrades a candidate without duplicating it and retains co-brokers', async () => {
   let calls = 0;
-  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.05), fetch: async () => {
+  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.05), fetch: async target => {
+    if (String(target).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
     calls++;
     if (calls === 1) return response(roster, 'Unrelated property');
     if (calls === 2) return response({...roster, agents: [...roster.agents,
@@ -122,4 +126,90 @@ test('canonical URL is also enforced for SDK callers that bypass the input parse
   });
   assert.equal(result.input.listingUrl, url);
   assert.equal(result.cost.reportedUsd, 0);
+});
+
+test('address-only input retrieves the candidate page and extracts without search or seeded broker names', async () => {
+  let sdkCalls = 0;
+  const candidate = 'https://streeteasy.com/building/620-east-6-street-new_york/9a';
+  assert.doesNotMatch(JSON.stringify(input), /Fatma/);
+  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.05), fetch: async (target, init) => {
+    if (String(target).startsWith('https://streeteasy.com/')) {
+      assert.equal(String(target), candidate);
+      return new Response(`<h1>${input.address} #9A</h1><h4>$6,995</h4><p>Listed by Fatma Kara FIND Real Estate</p>`, {headers: {'content-type': 'text/html'}});
+    }
+    const body = JSON.parse(String(init?.body)); sdkCalls++;
+    if (sdkCalls === 1) {
+      assert.equal(body.tools, undefined);
+      assert.equal(body.tool_choice, undefined);
+      return response({...roster, listingUrl: candidate, agents: roster.agents.map(a => ({...a, attribution: {...a.attribution, url: candidate}}))});
+    }
+    assert.equal(body.tool_choice, 'required');
+    return response(contacts);
+  }});
+  assert.equal(sdkCalls, 2);
+  assert.equal(result.agents[0]?.name, 'Fatma Kara');
+  assert.equal(result.agents[0]?.attributionStatus, 'source_cited');
+  assert.equal(result.listingUrl, candidate);
+});
+
+test('generated candidate with a different unit or stale rent is not used as listing evidence', async () => {
+  for (const [unit, price] of [['9', '$6,995'], ['9A', '$3,800']]) {
+    const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.02), fetch: async (target, init) => {
+      if (String(target).startsWith('https://streeteasy.com/')) return new Response(`<h1>${input.address} #${unit}</h1><h4>${price}</h4><p>Listed by Wrong Broker</p>`, {headers: {'content-type': 'text/html'}});
+      const body = JSON.parse(String(init?.body));
+      assert.doesNotMatch(JSON.stringify(body.messages), /Wrong Broker/);
+      assert.equal(body.tool_choice, 'required');
+      return response(empty);
+    }});
+    assert.equal(result.listingUrl, null);
+    assert.equal(result.agents.length, 0);
+    assert.match(result.notes.join(' '), /heading does not match|price conflicts/);
+  }
+});
+
+test('unverified names are excluded from contact lookup and cannot receive personal contacts', async () => {
+  let sdkCalls = 0;
+  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.05), fetch: async (target, init) => {
+    if (String(target).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
+    const body = JSON.parse(String(init?.body)); sdkCalls++;
+    if (sdkCalls <= 2) return response(roster); // No source text: not accepted.
+    assert.match(JSON.stringify(body.messages), /Roster: \[\]/);
+    assert.doesNotMatch(JSON.stringify(body.messages), /Fatma/);
+    return response({agents: [{id: 'agent-1', email: {value: 'hello@findrealestate.com', evidence: {url, excerpt: 'hello@findrealestate.com', sourceType: 'company_page'}}, phone: null, notes: []}], officeContacts: [], notes: []}, 'hello@findrealestate.com');
+  }});
+  assert.equal(result.agents[0]?.attributionStatus, 'needs_review');
+  assert.equal(result.agents[0]?.email, null);
+});
+
+test('office contact duplicates are removed from a supported broker personal fields', async () => {
+  let sdkCalls = 0;
+  const officeEmail = {value: 'hello@findrealestate.com', evidence: {url, excerpt: 'Email Us hello@findrealestate.com', sourceType: 'company_page'}};
+  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.05), fetch: async target => {
+    if (String(target).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
+    sdkCalls++;
+    if (sdkCalls === 1) return response(roster, text);
+    return response({agents: [{id: 'agent-1', email: officeEmail, phone: null, notes: []}],
+      officeContacts: [{name: 'FIND office', email: officeEmail, phone: null}], notes: []}, `${text} Email Us hello@findrealestate.com`);
+  }});
+  assert.equal(result.agents[0]?.attributionStatus, 'source_cited');
+  assert.equal(result.agents[0]?.email, null);
+  assert.equal(result.officeContacts[0]?.email?.value, 'hello@findrealestate.com');
+});
+
+test('a namesake or stale contact at another brokerage cannot become a personal contact', async () => {
+  let sdkCalls = 0;
+  const otherUrl = 'https://example.com/unverified-profile';
+  const result = await enrichWithAgent(input, {apiKey: 'offline', budget: new EnrichmentBudget(0.05), fetch: async target => {
+    if (String(target).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
+    if (++sdkCalls === 1) return response(roster, text);
+    const raw = await response({agents: [{id: 'agent-1', email: {value: 'unverified@example.com', evidence: {
+      url: otherUrl, excerpt: 'Fatma Kara Other Brokerage unverified@example.com', sourceType: 'search_excerpt',
+    }}, phone: null, notes: []}], officeContacts: [], notes: []}).json() as {choices: [{message: {annotations: unknown[]}}]};
+    raw.choices[0].message.annotations = [{type: 'url_citation', url_citation: {url: otherUrl, content: 'Fatma Kara Other Brokerage unverified@example.com'}}];
+    return Response.json(raw);
+  }});
+  assert.equal(result.agents[0]?.name, 'Fatma Kara');
+  assert.equal(result.agents[0]?.attributionStatus, 'source_cited');
+  assert.equal(result.agents[0]?.email, null);
+  assert.match(result.agents[0]?.notes.join(' ') ?? '', /does not establish this agent at the listing brokerage/);
 });
