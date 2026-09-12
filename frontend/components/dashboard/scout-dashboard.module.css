@@ -312,6 +312,56 @@
   border-bottom: 1px solid var(--line);
   font-size: 12px;
 }
+.commandResults:empty {
+  display: none;
+}
+.commandResults {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 30;
+  display: flex;
+  width: min(420px, calc(100% - 32px));
+  flex-direction: column;
+  gap: 8px;
+}
+.commandError,
+.commandSuccess {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 11px 13px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  box-shadow: 0 4px 20px #0002;
+  font-size: 11px;
+}
+.commandError {
+  color: #7a2e22;
+  background: #fff1ed;
+  border-color: #ecd2ca;
+}
+.commandSuccess {
+  color: var(--green);
+  background: var(--selected);
+}
+.commandError strong,
+.commandSuccess strong {
+  font-weight: 500;
+}
+.commandError button {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.commandError svg {
+  width: 12px;
+}
 .listScroll {
   flex: 1;
   min-height: 0;
@@ -471,6 +521,21 @@
   border-top: 1px solid var(--line);
   color: var(--muted);
   font-size: 9px;
+}
+.refreshButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  color: var(--green);
+  white-space: nowrap;
+}
+.refreshButton svg {
+  width: 12px;
+}
+.refreshButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
 }
 .detail {
   border-left: 1px solid var(--line);
@@ -636,6 +701,32 @@
 .integrationNote {
   margin-top: 12px;
 }
+.followUpDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 13px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+}
+.followUpDetails strong {
+  color: var(--ink);
+  font-weight: 500;
+}
+.followUpDetails small {
+  font-size: 10px;
+}
+.userProvidedLabel {
+  display: inline-block;
+  margin-bottom: 7px !important;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--green) !important;
+  font-size: 10px !important;
+}
 .tourInfo {
   margin-top: 12px;
   display: flex;
@@ -716,6 +807,25 @@
 }
 .conversation p {
   font-size: 12px;
+}
+.conversation .draftMessage {
+  border-color: #d8cba9;
+  background: #fffdf5;
+}
+.conversation .messageField {
+  margin-bottom: 5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.conversation .messageField strong {
+  display: inline-block;
+  min-width: 45px;
+  color: var(--ink);
+}
+.conversation .messageBody {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .timeline {
   list-style: none;
@@ -1090,8 +1200,18 @@
   .centerFooter {
     padding: 10px 17px;
   }
+  .refreshButton {
+    min-height: 44px;
+  }
   .notice {
     bottom: 74px;
+  }
+  .commandResults {
+    right: 16px;
+    bottom: 16px;
+  }
+  .commandError button {
+    min-height: 44px;
   }
   .preferences {
     font-size: 14px;

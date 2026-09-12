@@ -1,0 +1,131 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 15px;
+}
+.form label {
+  font-size: 11px;
+  font-weight: 500;
+}
+.form input:not([type="hidden"]):not([type="checkbox"]) {
+  width: 100%;
+  font-size: 12px;
+}
+.authorization {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin: 4px 0;
+  line-height: 1.5;
+  font-weight: 400 !important;
+}
+.authorization input {
+  flex: 0 0 auto;
+  width: 16px !important;
+  height: 16px;
+  margin-top: 2px;
+}
+.authorization span,
+.authorization strong {
+  display: block;
+}
+.authorization strong {
+  margin-bottom: 2px;
+  color: var(--ink);
+  font-weight: 500;
+}
+.primaryButton {
+  background: var(--green);
+  color: white;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  border-radius: 6px;
+  padding: 9px 12px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.primaryButton:hover:not(:disabled) {
+  background: #1b5135;
+}
+.form :disabled,
+.closeForm :disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+.closeForm {
+  min-width: 0;
+}
+.secondaryButton {
+  background: var(--surface);
+  border: 1px solid #d7dcd4;
+  min-height: 36px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+}
+.timingNote {
+  max-width: 210px;
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.45;
+}
+.error,
+.success {
+  margin-top: 4px;
+  padding: 9px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  line-height: 1.5;
+}
+.error {
+  color: #7a2e22;
+  background: #fff1ed;
+  border: 1px solid #ecd2ca;
+}
+.success {
+  color: var(--green);
+  background: var(--selected);
+  border: 1px solid var(--line);
+}
+.error button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 7px;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.error svg {
+  width: 12px;
+}
+.stub {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.stub button {
+  margin-top: 8px;
+  color: var(--green);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (max-width: 960px) {
+  .form input:not([type="hidden"]):not([type="checkbox"]) {
+    font-size: 16px;
+  }
+  .primaryButton,
+  .secondaryButton,
+  .stub button,
+  .error button {
+    min-height: 44px;
+  }
+}

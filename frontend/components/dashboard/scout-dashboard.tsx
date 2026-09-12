@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useActionState,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { FormEvent } from "react";
 import {
   Archive,
@@ -19,6 +27,7 @@ import {
   MapPin,
   Pause,
   Play,
+  RefreshCw,
   Search,
   Settings2,
   X,
@@ -40,8 +49,16 @@ import {
 } from "./inbox-model";
 import type { InboxListing, View } from "./inbox-model";
 import { SearchPreferencesForm } from "./search-preferences-form";
-import { profileSummary, signedOutPreferences } from "@/lib/search-profile";
-import type { PreferencesContext } from "@/lib/search-profile";
+import { ListingQuestions, ListingSnapshot } from "./listing-snapshot";
+import {
+  LiveBlockerControl,
+  LiveClosePursuitControl,
+} from "./live-pursuit-controls";
+import { SearchPauseControl } from "./search-pause-control";
+import { setSearchPaused, submitPursuitCommand } from "@/app/actions/pursuits";
+import type { CommandActionState } from "@/lib/inbox-command";
+import { profileSummary, sampleProfile, signedOutPreferences } from "@/lib/search-profile";
+import type { PreferencesContext, SearchProfile } from "@/lib/search-profile";
 import styles from "./scout-dashboard.module.css";
 
 export type InboxAccount = {
@@ -57,6 +74,10 @@ const demoAccount: InboxAccount = {
   paused: false,
   profileSummary: "1 bedroom · Up to $3,500",
   error: false,
+};
+const initialCommandState: CommandActionState = {
+  error: null,
+  message: null,
 };
 const money = (value: number) =>
   new Intl.NumberFormat("en-US", {
@@ -100,12 +121,13 @@ export function ScoutDashboard({
   account?: InboxAccount;
   preferencesContext?: PreferencesContext;
 }) {
+  const router = useRouter();
   const searchSummary = preferencesContext.profileError
     ? "Search preferences unavailable"
     : preferencesContext.signedIn
       ? profileSummary(preferencesContext.profile)
       : account.profileSummary;
-  const [listings, setListings] = useState(initialListings);
+  const [demoListingState, setDemoListingState] = useState(initialListings);
   const [view, setView] = useState<View>("Active");
   const [selectedId, setSelectedId] = useState<string | null>(
     initialListings.find((item) => item.pursuit?.blocker)?.id ?? null,
@@ -116,11 +138,26 @@ export function ScoutDashboard({
   const [workspace, setWorkspace] = useState("List");
   const [collapsed, setCollapsed] = useState<string[]>([]);
   const [showDetails, setShowDetails] = useState(false);
-  const [paused, setPaused] = useState(account.paused);
+  const [demoPaused, setDemoPaused] = useState(account.paused);
+  const [pursuitState, pursuitAction, pursuitPending] = useActionState(
+    submitPursuitCommand,
+    initialCommandState,
+  );
+  const [pauseState, pauseAction, pausePending] = useActionState(
+    setSearchPaused,
+    initialCommandState,
+  );
+  const [refreshPending, startRefresh] = useTransition();
   const [notice, setNotice] = useState("");
   const [previous, setPrevious] = useState<Record<string, InboxListing>>({});
   const preferences = useRef<HTMLDialogElement>(null);
   const listHeading = useRef<HTMLHeadingElement>(null);
+  const listings = mode === "live" ? initialListings : demoListingState;
+  const paused = mode === "live" ? account.paused : demoPaused;
+  const controlsDisabled = pursuitPending || pausePending || refreshPending;
+  const refreshInbox = useCallback(() => {
+    startRefresh(() => router.refresh());
+  }, [router]);
   useEffect(() => {
     if (!notice) return;
     const timeout = setTimeout(() => setNotice(""), 5000);
@@ -164,14 +201,14 @@ export function ScoutDashboard({
   function update(item: InboxListing, changed: InboxListing) {
     if (mode !== "demo" || item === changed) return;
     setPrevious((value) => ({ ...value, [item.id]: item }));
-    setListings((value) =>
+    setDemoListingState((value) =>
       value.map((entry) => (entry.id === item.id ? changed : entry)),
     );
   }
   function undo(item: InboxListing) {
     const original = previous[item.id];
     if (!original) return;
-    setListings((value) =>
+    setDemoListingState((value) =>
       value.map((entry) => (entry.id === item.id ? original : entry)),
     );
     setPrevious((value) => {
@@ -235,9 +272,9 @@ export function ScoutDashboard({
           </nav>
           <div className={styles.mobileAccount}>
             <span>{paused ? "Scout paused" : account.status}</span>
-            {mode === "demo" && (
+            {mode === "demo" ? (
               <button
-                onClick={() => setPaused(!paused)}
+                onClick={() => setDemoPaused(!paused)}
                 aria-label={paused ? "Resume demo" : "Pause demo"}
               >
                 {paused ? (
@@ -246,6 +283,16 @@ export function ScoutDashboard({
                   <Pause aria-hidden="true" />
                 )}
               </button>
+            ) : (
+              <SearchPauseControl
+                paused={paused}
+                compact
+                action={pauseAction}
+                state={pauseState}
+                pending={pausePending}
+                disabled={controlsDisabled}
+                onRefresh={refreshInbox}
+              />
             )}
             <button
               onClick={() => preferences.current?.showModal()}
@@ -275,7 +322,7 @@ export function ScoutDashboard({
               <>
                 <button
                   onClick={() => {
-                    setPaused(!paused);
+                    setDemoPaused(!paused);
                     setNotice(
                       paused
                         ? "Demo resumed."
@@ -295,9 +342,19 @@ export function ScoutDashboard({
                 </Link>
               </>
             ) : (
-              <Link href="/">
-                Open sample workspace <ArrowUpRight aria-hidden="true" />
-              </Link>
+              <>
+                <SearchPauseControl
+                  paused={paused}
+                  action={pauseAction}
+                  state={pauseState}
+                  pending={pausePending}
+                  disabled={controlsDisabled}
+                  onRefresh={refreshInbox}
+                />
+                <Link href="/">
+                  Open sample workspace <ArrowUpRight aria-hidden="true" />
+                </Link>
+              </>
             )}
           </footer>
         </aside>
@@ -553,7 +610,7 @@ export function ScoutDashboard({
                                 </td>
                                 <td className={styles.rentCell}>
                                   <strong>{money(item.rent)}</strong>
-                                  <small>{beds(item.beds)}</small>
+                                  <small>{beds(item.beds)}{item.baths !== null ? ` · ${item.baths} bath` : ""}</small>
                                 </td>
                                 <td className={styles.progressCell}>
                                   <span
@@ -598,8 +655,18 @@ export function ScoutDashboard({
             <span>
               {mode === "demo"
                 ? "Fictional apartments · Changes reset on refresh"
-                : "Persisted records · Live actions not connected"}
+                : "Persisted records · Worker updates arrive between cycles"}
             </span>
+            {mode === "live" && (
+              <button
+                className={styles.refreshButton}
+                onClick={refreshInbox}
+                disabled={controlsDisabled}
+              >
+                <RefreshCw aria-hidden="true" />
+                {refreshPending ? "Refreshing…" : "Refresh inbox"}
+              </button>
+            )}
             <span>
               {listings.length} received · {active.length} active
             </span>
@@ -634,6 +701,7 @@ export function ScoutDashboard({
                 key={selected.id}
                 item={selected}
                 mode={mode}
+                profile={mode === "demo" ? sampleProfile : preferencesContext.profileError ? null : preferencesContext.profile}
                 canUndo={Boolean(previous[selected.id])}
                 onUndo={() => undo(selected)}
                 onResolve={(value) => {
@@ -643,6 +711,12 @@ export function ScoutDashboard({
                   );
                   setNotice("Saved in the demo. No email or booking was made.");
                 }}
+                controlsDisabled={controlsDisabled}
+                pursuitAction={pursuitAction}
+                pursuitState={pursuitState}
+                pursuitPending={pursuitPending}
+                onRefresh={refreshInbox}
+                openPreferences={() => preferences.current?.showModal()}
               />
               <footer className={styles.detailFooter}>
                 {mode === "demo" &&
@@ -683,8 +757,19 @@ export function ScoutDashboard({
                         : "Dismiss listing"}
                     </button>
                   ))}
+                {mode === "live" && selected.pursuit && !isClosed(selected) && (
+                  <LiveClosePursuitControl
+                    pursuitId={selected.pursuit.id}
+                    expectedUpdatedAt={selected.pursuit.updatedAt}
+                    action={pursuitAction}
+                    state={pursuitState}
+                    pending={pursuitPending}
+                    disabled={controlsDisabled}
+                    onRefresh={refreshInbox}
+                  />
+                )}
                 <span>
-                  {mode === "demo" ? "Demo controls" : "Read-only connection"}
+                  {mode === "demo" ? "Demo controls" : "Live controls"}
                 </span>
               </footer>
             </>
@@ -697,6 +782,20 @@ export function ScoutDashboard({
           )}
         </aside>
       </div>
+      {mode === "live" && (
+        <div className={styles.commandResults}>
+          <MutationResult
+            label="Pursuit update"
+            state={pursuitState}
+            onRefresh={refreshInbox}
+          />
+          <MutationResult
+            label="Search status"
+            state={pauseState}
+            onRefresh={refreshInbox}
+          />
+        </div>
+      )}
       <p className={styles.notice} role="status">
         {notice}
       </p>
@@ -722,22 +821,64 @@ export function ScoutDashboard({
   );
 }
 
+function MutationResult({
+  label,
+  state,
+  onRefresh,
+}: {
+  label: string;
+  state: CommandActionState;
+  onRefresh: () => void;
+}) {
+  if (!state.error && !state.message) return null;
+  return (
+    <div
+      className={state.error ? styles.commandError : styles.commandSuccess}
+      role={state.error ? "alert" : "status"}
+    >
+      <p>
+        <strong>{label}:</strong> {state.error ?? state.message}
+      </p>
+      {state.error && (
+        <button type="button" onClick={onRefresh}>
+          <RefreshCw aria-hidden="true" /> Refresh inbox
+        </button>
+      )}
+    </div>
+  );
+}
+
 function ApartmentDetails({
   item,
   mode,
+  profile,
   canUndo,
   onUndo,
   onResolve,
+  controlsDisabled,
+  pursuitAction,
+  pursuitState,
+  pursuitPending,
+  onRefresh,
+  openPreferences,
 }: {
   item: InboxListing;
   mode: "demo" | "live";
+  profile: SearchProfile | null;
   canUndo: boolean;
   onUndo: () => void;
   onResolve: (value: string) => void;
+  controlsDisabled: boolean;
+  pursuitAction: (form: FormData) => void;
+  pursuitState: CommandActionState;
+  pursuitPending: boolean;
+  onRefresh: () => void;
+  openPreferences: () => void;
 }) {
   const [tab, setTab] = useState("Overview");
   const [value, setValue] = useState("");
   const pursuit = item.pursuit;
+  const tourEndsAt = pursuit?.tour?.endsAt;
   const blocker = !isClosed(item) ? pursuit?.blocker : null;
   const actionHeading = useRef<HTMLHeadingElement>(null);
   function submit(event: FormEvent) {
@@ -777,7 +918,7 @@ function ApartmentDetails({
         </p>
         <h3 ref={actionHeading} tabIndex={-1}>
           {pursuit?.tour && !blocker && !isClosed(item)
-            ? timestamp(pursuit.tour.at)
+            ? `${timestamp(pursuit.tour.at)}${tourEndsAt ? ` – ${timestamp(tourEndsAt)}` : ""}`
             : blocker
               ? blocker.question
               : statusLabel(item)}
@@ -788,7 +929,10 @@ function ApartmentDetails({
             <CalendarDays aria-hidden="true" />
             <span>
               {pursuit.tour.location}
-              <small>{pursuit.tour.calendarStatus}</small>
+              <small>
+                {tourEndsAt && `Ends ${timestamp(tourEndsAt)} · `}
+                {pursuit.tour.calendarStatus}
+              </small>
             </span>
           </div>
         )}
@@ -837,13 +981,26 @@ function ApartmentDetails({
               </button>
             </form>
           )}
+        {blocker && mode === "live" && pursuit && (
+          <LiveBlockerControl
+            blockerReason={blocker.reason}
+            pursuitId={pursuit.id}
+            expectedUpdatedAt={pursuit.updatedAt}
+            action={pursuitAction}
+            state={pursuitState}
+            pending={pursuitPending}
+            disabled={controlsDisabled}
+            onRefresh={onRefresh}
+            openPreferences={openPreferences}
+          />
+        )}
         {pursuit?.submittedValue && !isClosed(item) && (
           <div className={styles.receipt} role="status">
             <Check aria-hidden="true" />
             <div>
               <strong>
                 {pursuit.work === "contact_submitted"
-                  ? "Contact supplied · Unverified"
+                  ? "Contact supplied · Demo receipt"
                   : "Answer submitted"}
               </strong>
               <p>{pursuit.submittedValue}</p>
@@ -851,11 +1008,19 @@ function ApartmentDetails({
             </div>
           </div>
         )}
-        {mode === "live" && blocker && (
-          <p className={styles.integrationNote}>
-            This request is waiting for you. Response submission will be
-            available when the agent connection is ready.
-          </p>
+        {!blocker && pursuit?.nextFollowUpAt && !isClosed(item) && (
+          <div className={styles.followUpDetails}>
+            <strong>Follow-up scheduled</strong>
+            <time dateTime={pursuit.nextFollowUpAt}>
+              {timestamp(pursuit.nextFollowUpAt)}
+            </time>
+            {pursuit.followUpCount !== undefined && (
+              <small>
+                {pursuit.followUpCount} follow-up
+                {pursuit.followUpCount === 1 ? "" : "s"} recorded
+              </small>
+            )}
+          </div>
         )}
         {canUndo && !isClosed(item) && mode === "demo" && (
           <button className={styles.textButton} onClick={onUndo}>
@@ -876,6 +1041,7 @@ function ApartmentDetails({
       </div>
       {tab === "Overview" ? (
         <div className={styles.overview}>
+          <ListingSnapshot item={item} profile={profile} demo={mode === "demo"} />
           <section>
             <h3>
               {item.assessment === "not_fit"
@@ -889,14 +1055,12 @@ function ApartmentDetails({
                 "Scout has not recorded a match explanation yet."}
             </p>
           </section>
-          <section>
-            <h3>What’s still unknown</h3>
-            {item.unknowns.map((unknown) => (
-              <p key={unknown}>{unknown}</p>
-            ))}
-          </section>
+          <ListingQuestions item={item} profile={profile} />
           <section>
             <h3>Broker contact</h3>
+            {pursuit?.contactProvidedByUser && (
+              <p className={styles.userProvidedLabel}>Provided by you</p>
+            )}
             {pursuit?.contacts.length ? (
               pursuit.contacts.map((contact, index) => (
                 <p key={`${contact.email}-${index}`}>
@@ -921,6 +1085,8 @@ function ApartmentDetails({
           <section>
             <h3>Listing source</h3>
             <p>Received {timestamp(item.observedAt)}</p>
+            {item.lastSeenAt && <p>Last seen in alerts {timestamp(item.lastSeenAt)}</p>}
+            <p>Availability and current price have not been rechecked.</p>
             {item.sourceUrl ? (
               <a href={item.sourceUrl} target="_blank" rel="noreferrer">
                 Open original listing <ArrowUpRight aria-hidden="true" />
@@ -940,15 +1106,36 @@ function ApartmentDetails({
             {mode === "demo" ? "SAMPLE CONVERSATION" : "CONVERSATION"}
           </p>
           {item.messages.length ? (
-            item.messages.map((message) => (
-              <article key={message.id}>
-                <header>
-                  <strong>{message.from}</strong>
-                  <time dateTime={message.at}>{timestamp(message.at)}</time>
-                </header>
-                <p>{message.text}</p>
-              </article>
-            ))
+            item.messages.map((message) => {
+              const draft = message.kind === "draft";
+              return (
+                <article
+                  key={message.id}
+                  className={draft ? styles.draftMessage : undefined}
+                >
+                  <header>
+                    <strong>{draft ? "Draft · Not sent" : message.from}</strong>
+                    <time dateTime={message.at}>{timestamp(message.at)}</time>
+                  </header>
+                  {message.subject && (
+                    <p className={styles.messageField}>
+                      <strong>Subject</strong> {message.subject}
+                    </p>
+                  )}
+                  {message.to?.length ? (
+                    <p className={styles.messageField}>
+                      <strong>To</strong> {message.to.join(", ")}
+                    </p>
+                  ) : null}
+                  {message.cc?.length ? (
+                    <p className={styles.messageField}>
+                      <strong>Cc</strong> {message.cc.join(", ")}
+                    </p>
+                  ) : null}
+                  <p className={styles.messageBody}>{message.text}</p>
+                </article>
+              );
+            })
           ) : (
             <p className={styles.muted}>
               {mode === "demo"

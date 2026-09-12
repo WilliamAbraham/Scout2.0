@@ -18,6 +18,7 @@ export type BlockerReason =
 export type Work =
   | "finding_contact"
   | "ready_to_contact"
+  | "draft_ready"
   | "waiting_for_broker"
   | "replying"
   | "answer_submitted"
@@ -47,6 +48,8 @@ export type InboxListing = {
   beds: number | null;
   baths: number | null;
   sourceUrl: string | null;
+  brokerage?: string | null;
+  lastSeenAt?: string | null;
   observedAt: string;
   assessment: "checking" | "matched" | "not_fit";
   matchReason: string | null;
@@ -59,14 +62,37 @@ export type InboxListing = {
     work: Work;
     nextStep: string;
     updatedAt: string;
-    tour: { at: string; location: string; calendarStatus: string } | null;
+    tour: {
+      at: string;
+      endsAt?: string;
+      location: string;
+      calendarStatus: string;
+    } | null;
     closedReason: string | null;
-    contacts: { name: string | null; email: string | null }[];
+    contacts: {
+      name: string | null;
+      email: string | null;
+      phone?: string | null;
+      profileUrl?: string | null;
+      role?: "primary" | "secondary" | "unspecified";
+    }[];
+    contactProvidedByUser?: boolean;
+    nextFollowUpAt?: string | null;
+    followUpCount?: number;
     contactEvidenceUrl: string | null;
     submittedValue: string | null;
   } | null;
   events: InboxEvent[];
-  messages: { id: string; from: string; text: string; at: string }[];
+  messages: {
+    id: string;
+    from: string;
+    text: string;
+    at: string;
+    kind?: "draft" | "sent";
+    subject?: string;
+    to?: string[];
+    cc?: string[];
+  }[];
 };
 export const stageLabels: Record<Stage, string> = {
   matched: "Matched",
@@ -80,6 +106,7 @@ export const stageLabels: Record<Stage, string> = {
 export const activeGroups = [
   "Needs you",
   "Tours scheduled",
+  "Drafts ready",
   "Scout working",
   "Waiting for broker",
   "Recorded progress",
@@ -110,6 +137,7 @@ export function groupFor(listing: InboxListing, view: View): string | null {
   if (!listing.pursuit || isClosed(listing)) return null;
   if (listing.pursuit.blocker) return "Needs you";
   if (listing.pursuit.stage === "tour_scheduled") return "Tours scheduled";
+  if (listing.pursuit.work === "draft_ready") return "Drafts ready";
   if (listing.pursuit.work === "waiting_for_broker")
     return "Waiting for broker";
   if (listing.pursuit.work === "unknown") return "Recorded progress";
@@ -127,10 +155,11 @@ export function statusLabel(listing: InboxListing): string {
   const labels: Record<Work, string> = {
     finding_contact: "Finding contact",
     ready_to_contact: "Ready to contact",
+    draft_ready: "Draft ready",
     waiting_for_broker: "Waiting for broker",
     replying: "Scout replying",
     answer_submitted: "Answer submitted",
-    contact_submitted: "Contact awaiting verification",
+    contact_submitted: "Contact supplied",
     retrying: "Contact search delayed",
     unknown: stageLabels[pursuit.stage],
   };
@@ -195,7 +224,7 @@ export function submitDemoResolution(
       blocker: null,
       work: contact ? "contact_submitted" : "answer_submitted",
       nextStep: contact
-        ? "Contact supplied. Verification is queued; no outreach sent."
+        ? "Contact supplied in this demo. No outreach sent."
         : "Answer submitted. Scout’s next action is queued; no reply sent.",
       submittedValue: value.trim(),
       updatedAt: at,

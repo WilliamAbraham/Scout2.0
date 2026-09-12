@@ -17,11 +17,11 @@ test('a blocker is attention, not a replacement for contacted progress', () => {
   assert.equal(after.events.at(-1).title, 'Answer submitted');
   assert.notEqual(groupFor(after, 'Active'), 'Waiting for broker');
 });
-test('a supplied email stays unverified, with no new recipient or outreach event', () => {
+test('a supplied demo email records a receipt, with no new recipient or outreach event', () => {
   const before = sample('bergen');
   const after = submitDemoResolution(before, 'candidate@example.com', demoNow);
   assert.equal(after.pursuit.stage, 'matched');
-  assert.equal(statusLabel(after), 'Contact awaiting verification');
+  assert.equal(statusLabel(after), 'Contact supplied');
   assert.deepEqual(after.pursuit.contacts, []);
   assert.equal(after.events.at(-1).title, 'Contact supplied');
   assert.equal(before.pursuit.blocker.reason, 'no_contact');

@@ -175,7 +175,7 @@ function EditableProfileForm({ context }: { context: PreferencesContext }) {
           {context.gmailError
             ? "Connection status unavailable"
             : !context.gmail
-              ? "Gmail not connected"
+              ? "Gmail status not reported"
               : context.gmail.sync_error
                 ? "Gmail needs attention"
                 : "Gmail connected"}
@@ -196,8 +196,9 @@ function EditableProfileForm({ context }: { context: PreferencesContext }) {
         )}
         {(!context.gmail || context.gmail.sync_error) && (
           <p>
-            You can save preferences now. Google connection and reconnection are
-            not available yet.
+            You can save preferences now. The worker does not report Gmail
+            status here yet; Google connection and reconnection are not
+            available.
           </p>
         )}
       </section>
