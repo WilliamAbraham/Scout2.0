@@ -5,7 +5,7 @@
 Scout aims to automate NYC apartment hunting from listing-alert emails through broker conversations, tours, and applications. This is the intended product, not a description of completed functionality.
 
 - [context.md](context.md): code inventory, commands, verified status, and next work.
-- [Product design snapshot](docs/superpowers/specs/2026-09-12-scout-product-design.md): original detailed proposal, preserved for provenance.
+- [Product design snapshot](docs/superpowers/specs/2026-09-12-scout-product-design.md): detailed proposal, updated with the hackathon split in §§8–9.
 - [Design review](docs/reviews/2026-09-12-product-design-review.md): blockers, contradictions, and proposed corrections. Recommendations are not yet accepted product decisions.
 
 ## Hackathon scope
@@ -59,8 +59,6 @@ The corpus counts in the snapshot are reported pilot observations; they were not
 
 Proposed exclusions: StreetEasy page scraping, per-brokerage scraper adapters, vector search, SMS/phone outreach, automated portal completion, and lease signing. The spec also excludes roommate roles; baseline membership and document access controls still require a decision.
 
-The original two-person split assigns pipeline work to backend and dashboard work to frontend, coordinating on schema and escalation reasons. Authentication callbacks, authorized mutations, and document access also need shared contracts. Schema currently lives under `backend/`; ownership cannot be inferred solely from UI versus worker responsibility.
+The [hackathon split](docs/superpowers/specs/2026-09-12-scout-product-design.md#8-two-person-hackathon-split) assigns A listing intelligence, Gmail conversation, schema, and worker orchestration. B owns the full-stack dashboard, UI commands, calendar tools, and demo presentation. Both first agree a minimal contract and fixture scenarios, then integrate on the first persisted pursuit.
 
-Original order: schema → multi-user ingestion/onboarding → matching/feed → enrichment/escalations → outreach/tracker → calendar/documents → packets/search → roommates.
-
-Recommended first slice, pending agreement: define tenant and action contracts, then prove one user's StreetEasy alert can become an evidence-backed pursuit and a reviewable outreach draft. Enable unattended sending only after replay and failure recovery checks pass. This sequencing recommendation does not silently remove the agreed long-term features.
+Milestones: shared contract → alert on dashboard → verified contact and one outreach email → reply and optional calendar booking → rehearsal. Reserve the final quarter for integration. The minimum demo ends at a visible reply/state update; roommates, additional sources, packet sending, and natural-language search remain deferred. This plan is documentation, not implemented functionality.

@@ -1,6 +1,6 @@
 # Scout product design review
 
-Reviewed 2026-09-12 against `822db17`, including the all-agents revision. Source: [product design](../superpowers/specs/2026-09-12-scout-product-design.md). This is an independent assessment; recommendations below are not approved changes to product scope. The source snapshot remains unchanged.
+Reviewed 2026-09-12 against `822db17`, including the all-agents revision. Source: [product design](../superpowers/specs/2026-09-12-scout-product-design.md). This is an independent assessment; recommendations below are not approved changes to product scope. The original reviewed revision remains available at `822db17`; the user subsequently requested a hackathon split, now added to the design in §§8–9. Findings below refer to the original reviewed revision.
 
 ## Hackathon assessment — updated after user clarification
 
@@ -128,4 +128,4 @@ Changing extraction strategy is reasonable; discarding exact unit, campaign rece
 
 Before splitting feature work, agree a compact schema/state contract resolving findings 1–4 and 8. Then prove one StreetEasy ingestion-to-draft path, including contact evidence and replay behavior. Add bounded live outreach, tours, and packet release only as their acceptance checks pass. Roommates, additional sources, and natural-language search can follow the same contracts without turning the first milestone into the entire product.
 
-This review changed documentation only. No application behavior, live account, database, or original design snapshot was changed. Current command results and limitations are recorded in [context.md](../../context.md).
+This review changed documentation only. No application behavior, live account, or database was changed by the review. The later documentation update adds a hackathon work split to the design. Current command results and limitations are recorded in [context.md](../../context.md).

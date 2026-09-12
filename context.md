@@ -59,6 +59,10 @@ Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated 
 
 The user clarified that this project is for a hackathon. Prioritize a demonstrable vertical slice; production launch readiness is not the immediate success criterion. See the hackathon assessment at the top of the review before treating its P1 list as a blocker for all development. Personal root agent conventions are local-only and are not part of the shared documentation.
 
+## Two-person execution plan
+
+The design now assigns A ingestion/matching/enrichment, Gmail conversation, schema, and worker orchestration. B owns the full-stack dashboard, authorized UI commands, calendar functions, and demo presentation. First agree the contract and seed scenarios together; `docs/hackathon-contract.md` is a planned implementation deliverable, not yet created. Integrate on the first persisted pursuit and reserve the final quarter for rehearsal.
+
 ## Remaining decisions and next work
 
 See [the detailed review](docs/reviews/2026-09-12-product-design-review.md). For the demo, agree a minimal schema and state contract, restrict access to the intended demo account, and define send behavior before enabling real outreach. Full roommate boundaries and packet-release rules are required only when those features are enabled.
@@ -67,7 +71,7 @@ Restore working lint/test gates as focused implementation work; do not call the 
 
 ## Historical documents
 
-The [product spec](docs/superpowers/specs/2026-09-12-scout-product-design.md) is preserved verbatim. Its "agreed" status records the original proposal, not acceptance of review recommendations.
+The [product spec](docs/superpowers/specs/2026-09-12-scout-product-design.md) now includes the requested hackathon work split and milestones in §§8–9. The broader product proposal remains; the hackathon plan is not an implementation completion claim. The original revision is available at `822db17`.
 
 The August [frontend spec](docs/superpowers/specs/2026-08-30-nextjs-frontend-design.md) and [implementation plan](docs/superpowers/plans/2026-08-30-nextjs-frontend.md) are historical. Do not rerun their scaffold/copy steps against the populated frontend. Their direct-to-main instruction is superseded by current working conventions. The spec requires branding removal while the plan excludes it; current source still contains branding. Their old claims about an empty frontend and absent listings table are stale.
 

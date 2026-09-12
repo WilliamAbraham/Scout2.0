@@ -7,7 +7,7 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 - [Project](project.md): intended experience, architecture, scope, and work division.
 - [Engineering context](context.md): current implementation, setup, commands, check failures, and next work.
 - [Design review](docs/reviews/2026-09-12-product-design-review.md): prioritized findings and acceptance checks.
-- [Original product design](docs/superpowers/specs/2026-09-12-scout-product-design.md): preserved source proposal.
+- [Product design](docs/superpowers/specs/2026-09-12-scout-product-design.md): product proposal and two-person hackathon plan.
 
 ## Local development
 
