@@ -1,0 +1,32 @@
+{
+  "name": "@scout/backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node scripts/migrate.ts",
+    "start": "node src/index.ts",
+    "sync": "node scripts/sync.ts",
+    "inspect": "node scripts/inspect.ts",
+    "survey": "node scripts/survey.ts",
+    "probe": "node scripts/probe.ts",
+    "typecheck": "tsc",
+    "extract": "node scripts/extract.ts",
+    "test": "node --test src/gmail/listings.test.ts"
+  },
+  "dependencies": {
+    "@google-cloud/local-auth": "^2.1.0",
+    "@supabase/supabase-js": "^2.112.4",
+    "cheerio": "^1.2.0",
+    "drizzle-orm": "^0.45.2",
+    "googleapis": "^178.0.0",
+    "playwright": "^1.62.1",
+    "postgres": "^3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "drizzle-kit": "^0.31.10"
+  }
+}
