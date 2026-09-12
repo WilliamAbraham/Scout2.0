@@ -2,11 +2,14 @@ import {sql} from 'drizzle-orm';
 import {
   check,
   index,
+  integer,
+  jsonb,
   pgPolicy,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  unique,
   uuid,
 } from 'drizzle-orm/pg-core';
 import {authUsers, authenticatedRole} from 'drizzle-orm/supabase';
@@ -67,9 +70,19 @@ export const gmailTokens = pgTable('gmail_tokens', {
   updatedAt: timestamp('updated_at', {withTimezone: true}).defaultNow().notNull(),
 }).enableRLS();
 
+/** Where a message sits in the worker's ledger. */
+export type ProcessedStatus = 'done' | 'retry' | 'exhausted';
+
 /**
- * Idempotency for an at-least-once poller. Without it, a retry after a partial
- * failure sends a second email to a broker from the user's real address.
+ * The worker's per-message ledger: idempotency for an at-least-once poller,
+ * plus the retry state that keeps a transient failure from either looping
+ * every cycle or silently dropping mail.
+ *
+ * A row exists once the worker has looked at a message. `status` says whether
+ * it is finished (`done`), waiting for a bounded retry (`retry`, with
+ * `nextAttemptAt` and `attempts`), or gave up (`exhausted`, visible in the
+ * status report until someone resolves it). `outcome` carries the per-card
+ * summary so "what happened to that alert" is answerable without re-parsing.
  *
  * Gmail message ids are unique per mailbox, not globally, so the key is the
  * pair. Worker-only, like `gmailTokens`.
@@ -77,14 +90,64 @@ export const gmailTokens = pgTable('gmail_tokens', {
 export const processedMessages = pgTable('processed_messages', {
   userId: uuid('user_id').notNull().references(() => authUsers.id, {onDelete: 'cascade'}),
   gmailMessageId: text('gmail_message_id').notNull(),
+  gmailThreadId: text('gmail_thread_id'),
   // How the router classified it: 'alert' | 'reply' | 'noise'. Free text
   // because the set of parsers grows; nothing coordinates on these values.
   route: text('route').notNull(),
+  status: text('status').$type<ProcessedStatus>().notNull().default('done'),
+  attempts: integer('attempts').notNull().default(1),
+  nextAttemptAt: timestamp('next_attempt_at', {withTimezone: true}),
+  lastError: text('last_error'),
+  outcome: jsonb('outcome').$type<Record<string, unknown>>(),
   processedAt: timestamp('processed_at', {withTimezone: true}).defaultNow().notNull(),
 }, table => [
   primaryKey({columns: [table.userId, table.gmailMessageId]}),
   index('processed_messages_recent_idx').on(table.userId, table.processedAt.desc()),
+  index('processed_messages_retry_idx').on(table.userId, table.nextAttemptAt)
+    .where(sql`${table.status} = 'retry'`),
+  check('processed_messages_status_valid',
+    sql`${table.status} in ('done', 'retry', 'exhausted')`),
+  check('processed_messages_attempts_positive', sql`${table.attempts} >= 1`),
 ]).enableRLS();
+
+/**
+ * Every email in a pursuit's conversation, inbound and outbound, as the worker
+ * saw it. This is the thread history the reply turn reads and the record of
+ * what a broker actually wrote, kept verbatim because the model's reading of
+ * it is not the source of truth.
+ *
+ * Readable by the owner: it is their own mailbox. Written only by the worker.
+ */
+export const threadMessages = pgTable('thread_messages', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  userId: uuid('user_id').notNull().references(() => authUsers.id, {onDelete: 'cascade'}),
+  // Null for an outbound draft the sender has not yet given a Gmail id.
+  gmailMessageId: text('gmail_message_id'),
+  gmailThreadId: text('gmail_thread_id').notNull(),
+  // The pursuit this thread belongs to at the time of writing. `pursuits` is
+  // named literally: the two files would otherwise import each other.
+  pursuitId: uuid('pursuit_id'),
+  direction: text('direction').$type<'inbound' | 'outbound'>().notNull(),
+  fromAddress: text('from_address').notNull(),
+  toAddresses: text('to_addresses').array().notNull().default(sql`'{}'::text[]`),
+  ccAddresses: text('cc_addresses').array().notNull().default(sql`'{}'::text[]`),
+  subject: text('subject').notNull().default(''),
+  // RFC 822 Message-ID / In-Reply-To / References, for reply headers.
+  rfcMessageId: text('rfc_message_id'),
+  inReplyTo: text('in_reply_to'),
+  sentAt: timestamp('sent_at', {withTimezone: true}).notNull(),
+  textBody: text('text_body'),
+  htmlBody: text('html_body'),
+  createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
+}, table => [
+  unique('thread_messages_user_message_unique').on(table.userId, table.gmailMessageId),
+  index('thread_messages_thread_idx').on(table.userId, table.gmailThreadId, table.sentAt),
+  index('thread_messages_pursuit_idx').on(table.pursuitId, table.sentAt),
+  check('thread_messages_direction_valid', sql`${table.direction} in ('inbound', 'outbound')`),
+  pgPolicy('thread_messages_select_own', {
+    for: 'select', to: authenticatedRole, using: ownedBy(table.userId),
+  }),
+]);
 
 export type GmailAccount = typeof gmailAccounts.$inferSelect;
 export type NewGmailAccount = typeof gmailAccounts.$inferInsert;
@@ -92,3 +155,5 @@ export type GmailToken = typeof gmailTokens.$inferSelect;
 export type NewGmailToken = typeof gmailTokens.$inferInsert;
 export type ProcessedMessage = typeof processedMessages.$inferSelect;
 export type NewProcessedMessage = typeof processedMessages.$inferInsert;
+export type ThreadMessageRow = typeof threadMessages.$inferSelect;
+export type NewThreadMessageRow = typeof threadMessages.$inferInsert;

@@ -13,3 +13,4 @@ export * from './listings.ts';
 export * from './gmail.ts';
 export * from './profiles.ts';
 export * from './pursuits.ts';
+export * from './worker.ts';

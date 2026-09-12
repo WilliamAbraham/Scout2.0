@@ -1,5 +1,3 @@
-import {load} from 'cheerio';
-
 export interface Listing {
   address: string;
   price: number;
@@ -34,46 +32,15 @@ export async function resolveRentalUrl(link: string): Promise<{rentalId: string;
   throw new Error('StreetEasy link exceeded 5 redirects without reaching a rental.');
 }
 
+/**
+ * Every valid card in an alert, in order. The corpus importer's entry point;
+ * the worker uses `parseAlert` from `./alert.ts`, which also reports the
+ * layout and the cards that failed validation.
+ */
 export async function parseListing(messageHtml: string | null): Promise<Listing[]> {
   if (messageHtml === null) {
     throw new Error('This email has no HTML body.');
   }
-
-  const $ = load(messageHtml);
-  const listingCards = $('.ListingCard');
-
-  console.log('Number of listings:', listingCards.length);
-  const listings: Listing[] = []
-
-  for (const element of listingCards.toArray()) {
-    const card = $(element);
-    const address = card.find('.ListingCard-info--address').text().trim();
-    const priceText = card.find('.ListingCard-info--price').text().trim();
-    const price = Number(priceText.replaceAll('\u00A0', ' ').split(" ")[0]?.replaceAll("$", "").replaceAll(",", ""))
-
-    // StreetEasy spells this class "ListinCard". Select only the first
-    // container because nested tables repeat the same class.
-    const detailsText = card.find('.ListinCard-info--detailsContainer')
-      .first().text().replace(/\s+/g, ' ').trim().split(" ");
-    const beds = Number(detailsText[0])
-    const baths = Number(detailsText[2])
-
-    // The link wraps the card; its href is an email tracking URL.
-    const trackingUrl = card.closest('a.ListingCardLink').attr('href');
-    if (!trackingUrl) throw new Error(`Listing card is missing its link: ${address}`);
-    const rental = await resolveRentalUrl(trackingUrl);
-    const broker = card.find('.ListingCard-listingBy').text().trim()
-
-    const newListing: Listing = {
-      address: address,
-      price: price,
-      bedrooms: beds,
-      bathrooms: baths,
-      brokerage: broker,
-      ...rental
-    }
-    listings.push(newListing)
-  }
-
-  return listings;
+  const {parseAlert} = await import('./alert.ts');
+  return (await parseAlert(messageHtml)).cards;
 }
