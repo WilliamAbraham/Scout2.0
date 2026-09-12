@@ -1,0 +1,79 @@
+.snapshot .facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  gap: 16px 12px;
+}
+.snapshot dt {
+  color: var(--muted);
+  font-size: 12px;
+}
+.snapshot dd {
+  font-size: 13px;
+  font-weight: 500;
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+.comparison {
+  border-left: 3px solid var(--green);
+  padding: 9px 12px;
+  background: var(--surface);
+  margin-bottom: 12px;
+}
+.comparison strong {
+  font-size: 13px;
+  color: var(--green);
+}
+.comparison.outside {
+  border-left-color: #95652b;
+}
+.comparison.outside strong {
+  color: #80521d;
+}
+.snapshot .comparison p {
+  margin: 4px 0 0;
+  line-height: 1.5;
+}
+.costs {
+  display: grid;
+  gap: 10px;
+}
+.costs > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+.costs dd {
+  text-align: right;
+  flex-shrink: 0;
+}
+.snapshot .note {
+  margin-top: 12px;
+  line-height: 1.6;
+}
+.questions summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  min-height: 44px;
+  align-content: center;
+}
+.questions summary:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 3px;
+  border-radius: 3px;
+}
+.questions ul {
+  padding-left: 18px;
+  margin-top: 10px;
+  list-style: disc;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.questions li + li {
+  margin-top: 8px;
+}
