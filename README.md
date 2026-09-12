@@ -11,11 +11,11 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 
 ## Dashboard preview
 
-Open `/` after starting the frontend. The minimal dashboard shows search status, an actionable **Needs you** request, a next-tour reminder, and an **Active / All** apartment list. Click an apartment to open its detail panel with fit reasons, unknowns, sample conversation, and stop/resume controls. Search preferences open separately as a read-only sample profile.
+Open `/` after starting the frontend. The dashboard follows the local agentAI reference: a compact inbox rail, a central Map / Photos / Activity workspace, and a persistent apartment detail pane. Rows are grouped into **Needs you**, **Tours scheduled**, **Waiting for broker**, **Found**, and **Closed**, with text search and All / Needs you / Found / Contacted filters. On mobile, Inbox / Map / Details navigation shows one pane at a time.
 
-Confirm the sample move-in date or suggest another date, undo the response, pause/resume the demo search, and stop/restore individual pursuits. The sidebar, metrics, match percentages, saved/search/sort controls, and permanent detail/activity panels were removed following the UX review.
+Select an apartment to inspect its fit, unknowns, next step, and sample conversation. Confirm or suggest a move-in date, supply a missing broker email for verification, undo those changes, and stop/restore pursuits. Pause/resume and read-only search preferences live in the rail footer.
 
-All apartments and activity are fictional fixtures. Building icons stand in for unavailable photos; no original listing links are fabricated. Changes live in memory and reset on refresh. No backend commands or external messages are submitted. Existing auth routes remain available; live data integration awaits the shared pursuit/command contract.
+All apartments and activity are fictional fixtures. The map is an external OpenStreetMap area overview, requires network access, and deliberately has no fixture location pins. Photos have an explicit empty state; no original listing links are fabricated. Changes live in memory and reset on refresh. No backend commands or external messages are submitted. Existing auth routes remain available; live data integration awaits the shared pursuit/command contract.
 
 ## Local development
 
