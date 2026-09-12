@@ -16,7 +16,7 @@ The user clarified that this is a hackathon project. Optimize the first mileston
 
 An account owner connects Gmail and Calendar, creates StreetEasy or Apartments.com alerts themselves, and supplies a search profile. Scout ingests alerts, matches listings, resolves contacts, requests tours, handles replies, schedules confirmed tours, and sends application materials within the owner's authorization.
 
-The dashboard has a listings feed, a prominent **Needs you** queue, and an application tracker. Proposed extras include natural-language filtering and roommate invitations with shared listings and a shared application packet.
+The intended dashboard has a listings feed, a prominent **Needs you** queue, and an application tracker. The first frontend iteration now implements a sample listings feed, Needs you confirmation/undo, selected listing brief, and read-only tour/activity panels at `/`; the application tracker and live pipeline integration remain planned. Proposed extras include natural-language filtering and roommate invitations with shared listings and a shared application packet.
 
 The proposed loop is:
 

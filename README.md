@@ -1,6 +1,6 @@
 # Scout
 
-Automating NYC apartment hunting. Today the repo contains a single-user StreetEasy email ingestion pipeline, a Postgres listings schema, and a Next.js/Supabase auth starter. The autonomous apartment-hunting product is proposed, not implemented.
+Automating NYC apartment hunting. Today the repo contains a single-user StreetEasy email ingestion pipeline, a Postgres listings schema, and a Next.js/Supabase frontend with an interactive sample dashboard. The autonomous apartment-hunting product is proposed, not implemented.
 
 ## Start here
 
@@ -8,6 +8,12 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 - [Engineering context](context.md): current implementation, setup, commands, check failures, and next work.
 - [Design review](docs/reviews/2026-09-12-product-design-review.md): prioritized findings and acceptance checks.
 - [Product design](docs/superpowers/specs/2026-09-12-scout-product-design.md): product proposal and two-person hackathon plan.
+
+## Dashboard preview
+
+Open `/` after starting the frontend. The first dashboard iteration uses the local `agentAI` project as a visual/interaction reference: muted green surfaces, queue filters, status badges, and a selected listing brief. Search, sort, save, expand listing details, and confirm/undo the sample move-in request.
+
+All displayed listings, scores, tours, and activity are fictional demo fixtures. Changes live in memory and reset on refresh. No backend commands or external messages are submitted. Existing auth routes remain available; live data integration awaits the shared pursuit/command contract.
 
 ## Local development
 

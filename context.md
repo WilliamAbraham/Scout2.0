@@ -1,6 +1,6 @@
 # Scout: current engineering context
 
-Updated 2026-09-12. Source baseline: `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
+Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
 ## Implemented in source
 
@@ -12,7 +12,7 @@ Updated 2026-09-12. Source baseline: `822db17` on `origin/main`. Code inspection
 - `backend/scripts/importListings.ts`: imports cached mail. On conflict it only fills missing brokerage; it does not refresh price or advance observation timestamps. This matters for matching and contact recency.
 - `backend/src/db/index.ts`: root `.env` database connection, with prepared statements disabled for the pooler.
 - `backend/src/index.ts`: HTTP `/health` only; default port 3000, overridden to 4000 by `dev:api`.
-- Frontend: Next.js auth starter, session clients and `proxy.ts`, auth pages, and protected route. Starter tutorial/branding assets remain. No Scout listings dashboard.
+- Frontend: public `/` now renders a Scout sample dashboard with search, filters, price/match sorting, saved listings, expandable details, selected listing brief, and a confirm/undo demo request. Sample preferences, tours, and activity are read-only. State is in memory. Auth/session clients, `proxy.ts`, auth pages, and protected route remain; unused starter assets still exist.
 - Enrichment browser/probe helpers exist. `backend/src/enrichment/names.ts` is a comment-only plan, not a working enrichment pipeline.
 
 No implementation was found for multi-user Google OAuth, calendar integration, sending mail, matching, pursuits, application storage/sharing, roommate membership, natural-language search, or the proposed worker. No live service or deployment was tested.
@@ -54,6 +54,21 @@ Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated 
 - Frontend ESLint now uses the Next.js flat configuration directly; the previous FlatCompat bridge failed with a circular-JSON error after installation. ESLint runs, but reports existing violations in `components/theme-switcher.tsx` (`set-state-in-effect`) and `tailwind.config.ts` (`no-require-imports`).
 - Dependencies were installed with `npm ci` during the dashboard iteration. Live auth/database flows remain unverified. See the dashboard verification below for current frontend checks.
 - Documentation validation: local Markdown links and `git diff --check` are checked before committing. These checks do not establish application correctness.
+
+## Dashboard iteration verification
+
+Reference: read-only inspection of the local `agentAI/src/app/page.tsx` and `globals.css`. Reused its muted green visual direction, queue/status vocabulary, and selected-listing brief pattern in Scout's existing Next.js/Tailwind stack. Did not port its backend, Google Maps, or outreach integrations.
+
+- `npm ci`: completed with the tracked lockfile unchanged.
+- `npm run build -w frontend`: passed.
+- `npm run typecheck -w frontend`: passed.
+- Targeted ESLint on dashboard, root page, and root layout: passed.
+- Full frontend lint: runs after the flat-config fix, with the two existing violations listed above. Root `yarn lint` and `yarn test` still fail for the documented missing script/test file.
+- Browser: verified saving and saved filtering, neighborhood search, empty results, sort toggle, listing expansion/inspector update, confirmation/undo, and reset on refresh.
+- Visual inspection: desktop and 375px mobile. Document width matched the viewport at 375px and 812px landscape. OS text scaling and full keyboard traversal were not exercised.
+- No live auth, persistence, ingestion, outreach, or calendar integration tested. The public homepage contains only synthetic fixtures; keep it that way until authenticated live-data integration is designed.
+
+Next dashboard work: iterate with user feedback, agree the pursuit/command contract with pipeline owner A, then replace fixtures with authorized persisted results. Map view and command submission are not implemented.
 
 ## Hackathon clarification
 
