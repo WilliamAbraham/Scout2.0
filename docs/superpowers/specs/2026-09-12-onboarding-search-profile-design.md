@@ -4,6 +4,13 @@
 originally specified is **deferred** — see §7. What remains in scope is a
 single writable search-profile screen.
 
+**Implementation update (2026-09-12):** The writable panel is implemented on
+`/` and `/dashboard` on `codex/implement-pursuit-inbox`. Signed-in users without
+a row can create one; failed reads disable editing. The public route still
+uses fixture listings. The descriptions of the old panel below are design-time
+context. See [current engineering context](../../../context.md) for verified
+checks and remaining live-persistence, OAuth and schema work.
+
 **Owner:** Person B (`frontend/`), with two schema additions owned by Person A.
 
 **Why it shrank.** This was written against the pre-hackathon build order,

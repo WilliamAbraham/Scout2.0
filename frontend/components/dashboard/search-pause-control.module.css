@@ -1,0 +1,64 @@
+.control > button,
+.compact > button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.compact {
+  position: relative;
+}
+.control > button {
+  min-height: 30px;
+}
+.compact > button {
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+}
+.control > button:disabled,
+.compact > button:disabled {
+  cursor: not-allowed;
+  opacity: 0.48;
+}
+.feedback:empty,
+.error:empty {
+  display: none;
+}
+.feedback,
+.error {
+  margin-top: 7px;
+  font-size: 10px;
+  line-height: 1.45;
+}
+.feedback {
+  color: var(--green);
+}
+.error {
+  color: #7a2e22;
+}
+.error button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  margin-top: 4px;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.error svg {
+  width: 12px;
+}
+.compact .feedback,
+.compact .error {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 5;
+  width: min(260px, calc(100vw - 32px));
+  margin-top: 2px;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  box-shadow: 0 3px 10px #0002;
+}

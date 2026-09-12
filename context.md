@@ -2,9 +2,79 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Search preferences page — 2026-09-12
+
+Implemented `/preferences` on `codex/more-enrichment-on-frontend`. Inbox navigation and the no-fitting-slot shortcut now lead to the page, replacing the dialog. The page retains Scout’s existing shell, separates Search filters / Apartment preferences / Tour availability, and adds suggestion toggles, custom lists and a live summary.
+
+- Source audit confirms that rent, bedroom and bathroom bounds filter newly evaluated listings. Missing room counts can pass; no review gate is created. Neighborhoods, must-haves, dealbreakers and prose go to outreach context rather than automatic matching. Existing evaluated matches and StreetEasy alerts are unchanged by a save. Blank availability is sent as flexible; tour windows do not enforce booking constraints.
+- Signed-out users can edit/check a sample without a database write. Only the exact public `/preferences` route is exempted from the proxy redirect; `/dashboard` remains protected and every save validates the session. Failed profile reads block editing.
+- Save execution now checks the returned owner row and catches uncertain failures; client errors retain all drafts, including time windows. Editable-field whitelisting preserves pause, learned answers and send caps. Profile saves remain last-save-wins. List entries are deduplicated case-insensitively.
+- Verified: all 191 tests passed (154 backend, 37 frontend), including eight profile parser/authorization/receipt cases. Both workspace typechecks, frontend production build and targeted ESLint passed. Root `yarn lint` remains absent; full frontend lint retains its previously documented starter errors.
+- Browser QA: 1440px desktop and 375px mobile; no horizontal overflow, 16px mobile inputs, studio/budget summary updates, selected suggestions, custom text, flexible availability, invalid rent and time ranges, linked/focused inline errors, retained edits and sample-check feedback. Anonymous `/dashboard` still redirects to login; the browser was left at `/preferences` with the viewport override reset. No authenticated live profile writes, RLS checks, worker commands or deployment were performed.
+
+## Final upstream reconciliation — 2026-09-12
+
+Integrated `origin/main` at `0a888a6` into `codex/more-enrichment-on-frontend` for [PR #9](https://github.com/WilliamAbraham/Scout2.0/pull/9). README/context conflicts preserve the implemented frontend contract alongside the new backend assignments and broker-discovery evidence. Incoming enrichment changes add no pursuit/profile schema or command changes; the worker still uses its existing provider and refuses live sending.
+
+Verified on the combined tree: all **183 tests passed** (154 backend, 29 frontend), both workspace typechecks and the frontend production build passed, and `git diff --check` passed. Targeted frontend ESLint passed before this merge; no frontend source changed in it. Root `yarn lint` remains unavailable because its script is absent. Earlier counts below describe their respective snapshots. Owner login, real-row/RLS checks and hosting deployment remain pending; no live worker, mailbox, migration or paid enrichment command ran during this integration.
+
+## Listing information enrichment — 2026-09-12
+
+Implemented on `codex/more-enrichment-on-frontend`, with shared dashboard wiring in `52f7182` and listing components/tests in `e709720`.
+
+- Rows now include bathrooms beside bedrooms. Overview adds a facts snapshot, recorded brokerage, budget comparison and a rent-only 12-month calculation. Both budget bounds are respected; absent/failed profile reads produce no comparison. Public demo comparisons use the labeled sample profile.
+- `listings.brokerage` and `last_seen_at` are selected and projected without a schema migration. Invalid/missing metadata stays unknown. Last seen is an alert observation, not a claim of current availability or a price recheck.
+- **Before you tour** expands into listing unknowns and questions about move-in/lease terms, extra costs, size, laundry and pets, plus saved must-haves/dealbreakers. These are unverified questions; no actual amenity or external lookup data was added.
+- Verified locally: `yarn test` passed 135 backend and 29 frontend tests, including four new budget/metadata/question tests. Frontend typecheck, targeted ESLint and `git diff --check` passed. Root `yarn lint` is still unavailable because there is no root script.
+- Browser QA: desktop under-budget ($300) and over-budget ($700) comparisons, annual rent amounts, expandable questions, and mobile snapshot at 375px with document width equal to viewport width. No live database, mailbox, migration or paid enrichment command ran. Authenticated source metadata loading and deployed RLS remain unverified.
+
+## Latest handoff integration — 2026-09-12
+
+B's handoff implementation is on `codex/more-enrichment-on-frontend`. The [dashboard–worker contract](docs/hackathon-contract.md) records actual payloads, contact/close/pause semantics and worker limits; the [demo runbook](docs/demo-runbook.md) covers login and deployment preparation.
+
+- Server actions implement user-authorized contact supply, close pursuit and pause/resume. Every command verifies the session/owner, compares current state/version, requires a returned row and reports uncertain writes. Contact supply clears the blocker without advancing stage or claiming a send. It is eligible on a future cycle, with no later verification step. The other five blocker types have explicit placeholders; availability edits do not clear a current blocker.
+- The reader now selects event payloads, thread/enrichment and follow-up fields. Valid drafts render separately from sent emails; malformed draft records suppress false readiness. Tours require ordered offset timestamps and retain unknown location/calendar confirmation. Contact evidence and user-supplied provenance are displayed. Missing Gmail metadata is “status not reported,” not proof of disconnection.
+- Live data uses refreshed server props; pending state is shared across controls, and mutation results remain visible after a blocker clears, selection changes or a pursuit closes. The inbox can be refreshed for new worker events. Public demo contact receipts no longer promise a nonexistent later verification queue.
+- Verification before the final upstream merge: production build, frontend typecheck and targeted ESLint passed. All 164 tests passed: 135 backend and 29 frontend (11 command, 6 handoff projection, 8 existing inbox and 4 listing-insight tests). Root lint is still absent; full frontend lint has its two known starter violations.
+- Browser QA used fictional records in a temporary route, now removed: at 375px the contact form retains email and authorization after a returned sign-in error; the error is scoped to the submitted action and its persistent notice can be dismissed. Draft recipients/subject/body display as “Draft · Not sent”; the no-fitting-slot placeholder explains that preferences do not clear it, and its shortcut opens the preferences dialog. Anonymous `/dashboard` redirects to `/auth/login`. These checks did not write real pursuit/profile rows or establish deployed RLS correctness.
+- Live owner login, real-row/RLS verification and deployment remain unverified; owner sign-in and a hosting target were requested. A must scope the single-mailbox worker before multi-user deployment and guard in-flight writes before reliable cancellation. No credentials/session were fabricated and no worker/mailbox/migration/paid enrichment command was run.
+
+Merged upstream `c3a05f4` into `codex/implement-pursuit-inbox`, including the persisted worker and [Person B handoff](docs/2026-09-12-person-b-handoff.md). README and context conflicts were resolved by preserving both frontend and backend updates. The handoff describes pre-merge branch status; its command contract remains a proposal. Earlier statements below about an unmerged, in-memory worker are historical. Upstream live database results are reported by A and were not independently rerun during this pull. Local verification: after `npm ci` installed the updated lockfile dependencies, `yarn test` passed 135 backend and 8 frontend tests. `yarn lint` remains unavailable because the root script is absent. No live worker, mailbox, migration, or paid enrichment command was run.
+
+## Latest profile-design integration — 2026-09-12
+
+Merged upstream `ce8c8df` into `codex/implement-pursuit-inbox`. The incoming change is documentation only: it replaces the five-step onboarding plan with a writable Search preferences panel. It adds no endpoint or schema migration.
+
+- Implemented the panel on both `/` and `/dashboard`. The public route keeps fixture listings but reads session/profile inside Suspense. Signed-out visitors get a sample; signed-in owners with no row can create one. Profile-read errors block editing and offer refresh.
+- `lib/profile-server.ts` selects criteria, pause state and safe Gmail metadata under an explicit user filter. `app/actions/profile.ts` revalidates the session, rejects malformed criteria, and upserts only editable fields with the session-derived owner. Agent answers, pause and send caps are omitted from the write. No pursuit command or outreach integration was added.
+- Controlled drafts retain invalid or failed submissions. Validation covers numeric bounds/precision, ordered rent/bed ranges, comma-separated criteria and complete same-day tour windows (Sunday = 0). The summary represents both lower and upper limits. Move-in/timezone columns and Google OAuth entry point remain absent; windows are labeled New York time.
+- Verification: 72 backend and 8 frontend tests passed, plus direct parser assertions for valid/blank values, malformed numbers, bounds, availability, summaries and the field whitelist. Browser checks covered signed-out sample, an editable sample, malformed and inverted rent values with preserved input, adding/removing windows at 375px, a first-profile empty form, and a blocked form after a failed read. The temporary sample QA route was removed. No live profile was written; authenticated persistence and deployed RLS remain unverified.
+- Frontend typecheck, targeted ESLint and production build passed. Root `yarn lint` remains unavailable. Full frontend lint retains the two existing violations in `components/theme-switcher.tsx` and `tailwind.config.ts`.
+
+### Historical worker branch review (superseded by the persisted pipeline below)
+
+The final fetch also found [PR #5](https://github.com/WilliamAbraham/Scout2.0/pull/5), `origin/codex/enrichment-cost-benchmark` at `97217cf`. Its parent `3aaac3c` adds outreach, alert processing and an inbox watcher. This branch was inspected read-only and is not merged into the frontend branch.
+
+- New `next_follow_up_at` and `follow_up_count` schema fields could support scheduled-follow-up details once migrated and populated.
+- `WorkerStore` declares persistence operations, but its executable currently supplies an empty in-memory store; mail, calendar and availability ports are stubs. An `outreach_sent` return from this path does not establish a Gmail send.
+- The alert script uses a blank agent profile. A backend adapter must translate saved `search_profiles` criteria and structured tour windows into the agent profile. Pipeline reasons such as `owner_listed` and `enrichment_incomplete` also need a mapping to persisted assessment/blocker values.
+- No new working frontend endpoint or persisted worker-state contract was found. Keep live pursuit actions disabled and preserve unknown work state until the store/service adapters and mappings land. No benchmark, mailbox or worker command was run during this inspection.
+
+## Earlier inbox implementation — 2026-09-12 (superseded by handoff integration above)
+
+Implemented the user-approved direction from the [inbox/process review](docs/reviews/2026-09-12-inbox-process-review.md) on `codex/implement-pursuit-inbox`.
+
+- `inbox-model.ts` separates incoming assessment, persisted pursuit stage, blockers, current work and explicit closure. Pure queue selectors replace the fixture-ID rules. Unknown worker state uses Recorded progress; tour stages use Tours scheduled. An unclosed decision remains active.
+- Public `/`: eight synthetic records, wide grouped rows, Active/All listings/Closed, Needs you shortcut, alternate map, action-first details, overview/conversation/activity, search/filter, pause/preferences and responsive detail navigation.
+- Demo answer/contact receipts preserve stage and do not send, verify or book anything. Contact candidates remain unverified. Undo, stop/restore and incoming dismissal are separate; dismissal cannot stop a pursuit.
+- `/dashboard`: session-validated, user-filtered Supabase SELECTs over user-listing relations, the one-to-one pursuit relation, events, Gmail health and profile. Password login lands here. Listing/pursuit mutations remain disabled; the profile-save integration above is the sole live write path. Invalid source URL schemes are omitted. Unknown messages, next action and tour time are not fabricated.
+- The live reader is implemented but successful authenticated data loading, deployment/migrations and live RLS behavior remain unverified. The current importer still does not populate per-user feed records. Backend commands, reply contents and next-action/tour outcome contracts remain absent.
+- Verification: 72 backend tests plus 8 frontend projection/transition tests passed. Frontend typecheck, production build and targeted lint passed. `yarn lint` remains unavailable because the root script is absent. Anonymous `/dashboard` returns HTTP 307 to `/auth/login`.
+- Browser checks: desktop inbox; 375px layout with document width 375px; move-in receipt without stage advance; contact remains unverified; response focus moves to the receipt heading; stop/Closed/restore; assessment filters and non-match detail. No live mailbox/database access or migrations ran.
+
 ## Backend completion handoffs (2026-09-12)
 
-Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). These documents reflect a source audit, not a new live test. The worker still uses the older enrichment provider, refuses live sending, and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings, and restart-safe spending/delivery remain pending. Local uncommitted one-email runner/contact-adapter work must be coordinated with its author. No backend behavior changes or live sends were made for this documentation task. Validation: all 154 tests passed with Node type stripping enabled, documentation links and `git diff --check` passed, and `yarn lint` remained unavailable because no root lint script exists.
+Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). These documents reflect a source audit, not a new live test. The worker still uses the older enrichment provider, refuses live sending, and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings, and restart-safe spending/delivery remain pending. Local uncommitted one-email runner/contact-adapter work must be coordinated with its author. No backend behavior changes or live sends were made for this documentation task. Upstream snapshot validation: all 154 tests passed with Node type stripping enabled, documentation links and `git diff --check` passed, and `yarn lint` remained unavailable because no root lint script exists.
 
 ## Continuous worker (2026-09-12, branch `worktree-claude`)
 
@@ -66,6 +136,17 @@ Pulled `origin/main` through `f9b1b76` on 2026-09-12 into `codex/dashboard-first
 
 The review and dashboard verification sections below describe earlier snapshots; this integration status supersedes their statements about absent tenant schema, enrichment implementation, ignored migrations, and the missing test target.
 
+## Inbox/process review — current source, 2026-09-12
+
+The [new review](docs/reviews/2026-09-12-inbox-process-review.md) maps the product process to the current schema and proposes the next UX iteration. Its UI direction was subsequently accepted and implemented above; the worker contract remains a proposal.
+
+- Runtime intake is CLI Gmail collection/cache, StreetEasy parsing and global listing import. The importer only fills missing brokerage on duplicate rental IDs; it does not refresh price/observation times or populate `user_listings`.
+- Broker enrichment is a standalone, tested service with source evidence, candidate contacts, readiness and execution outcomes. It is not wired to pursuits or the UI. `source_matched` validates apartment identity, not user preference matching; incomplete lookup is not a confirmed missing contact.
+- The schema now has per-user match decisions, pursuits with independent blockers, contact/thread snapshots, events, profile/pause and Gmail health metadata. No runtime matcher, worker, command handler, broker reply router, email sender or calendar integration was found. The backend HTTP surface remains `/health` only.
+- The proposal separates incoming assessment from pursuit stage and next-action ownership. It retains Needs you as a priority view, recommends wider grouped rows and an alternate map, and requires worker-confirmed outcomes for live status changes.
+- `yarn test`: 72 tests passed again. `yarn lint`: failed because the root script is missing. Review checked source and mocked tests; no live mailbox, migration or database operations ran.
+- Dashboard PR #2 is merged into `origin/main` at `3fedd6a`. This documentation review starts from that commit on `codex/inbox-process-review`.
+
 ## Implemented in source at the earlier review
 
 - Root npm workspaces: `@scout/backend` and `@scout/frontend`, with a tracked `package-lock.json`.
@@ -93,7 +174,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run lint -w frontend` | Frontend ESLint; no backend lint script |
 | `npm run build -w frontend` | Frontend production build |
 | `yarn lint` | Required convention; currently fails because root script is absent |
-| `yarn test` | Required convention; passes 154 tests after the broker discovery fix |
+| `yarn test` | Required convention; runs backend and frontend tests |
 | `npm run sync` | Gmail message corpus discovery/cache workflow |
 | `npm run inspect -- <messageId>` | Inspect cached/raw mail; output can contain personal information |
 | `npm run survey -- --offline` | Cached corpus survey |
@@ -107,7 +188,7 @@ Root `.env` supplies backend `DATABASE_URL`; `frontend/.env.local` supplies the 
 
 Local setup on 2026-09-12: the user-provided Supabase settings are configured in those ignored environment files. Environment parsing and required values were checked; live authentication and database connectivity remain unverified. Teammates must configure their own local copies; credentials are not included in Git.
 
-The initial Drizzle migration and metadata are tracked, but `.gitignore` also ignores `backend/drizzle/`. Future migrations can therefore be omitted accidentally; resolve this before schema implementation.
+Drizzle migrations and metadata are tracked; the upstream integration removed the migration ignore rule. No migrations were applied during this review.
 
 Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated guidance in `frontend/AGENTS.md` before frontend code changes; this documentation task leaves that file intact.
 
@@ -121,7 +202,7 @@ Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated 
 - Dependencies were installed with `npm ci` during the dashboard iteration. Live auth/database flows remain unverified. See the dashboard verification below for current frontend checks.
 - Documentation validation: local Markdown links and `git diff --check` are checked before committing. These checks do not establish application correctness.
 
-## Dashboard iteration verification
+## Earlier dashboard iteration verification
 
 Reference: read-only inspection of local `agentAI/src/app/page.tsx` and `globals.css`. After the earlier minimal single-page experiment, the user supplied a screenshot and requested agentAI as the starting point. The current revision adopts its floating window, muted listing rail, aligned pane headers, central map, and persistent right inspector. It does not port agentAI's backend or outreach integrations. OpenStreetMap replaces the Google Maps dependency for the demo overview.
 
@@ -151,7 +232,7 @@ The design now assigns A the entire agentic pipeline, including ingestion/matchi
 
 See [the detailed review](docs/reviews/2026-09-12-product-design-review.md). For the demo, agree a minimal schema and state contract, restrict access to the intended demo account, and define send behavior before enabling real outreach. Full roommate boundaries and packet-release rules are required only when those features are enabled.
 
-Restore working lint/test gates as focused implementation work; do not call the existing scripts passing checks. Establish the parser fixture baseline and migration reproducibility before building on the pipeline.
+Restore the root lint gate as focused implementation work. The current 72 schema/enrichment tests pass; establish parser fixtures and live migration/integration verification before claiming a complete pipeline.
 
 ## Historical documents
 
