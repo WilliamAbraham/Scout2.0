@@ -4,6 +4,8 @@ Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source r
 
 ## Latest handoff integration — 2026-09-12
 
+B implementation is in progress on the merged branch. The [dashboard–worker contract](docs/hackathon-contract.md) records current payloads, user-authorized contact writes, close/pause semantics and worker limits; the [demo runbook](docs/demo-runbook.md) covers login and deployment preparation. Eleven command tests pass for session ownership, stale/uncertain writes, column whitelists and pause retries. Output projection and UI integration follow in separate commits. Live account verification and deployment require owner sign-in and a hosting target; no password/session was fabricated and no worker command was run.
+
 Merged upstream `c3a05f4` into `codex/implement-pursuit-inbox`, including the persisted worker and [Person B handoff](docs/2026-09-12-person-b-handoff.md). README and context conflicts were resolved by preserving both frontend and backend updates. The handoff describes pre-merge branch status; its command contract remains a proposal. Earlier statements below about an unmerged, in-memory worker are historical. Upstream live database results are reported by A and were not independently rerun during this pull. Local verification: after `npm ci` installed the updated lockfile dependencies, `yarn test` passed 135 backend and 8 frontend tests. `yarn lint` remains unavailable because the root script is absent. No live worker, mailbox, migration, or paid enrichment command was run.
 
 ## Latest profile-design integration — 2026-09-12
