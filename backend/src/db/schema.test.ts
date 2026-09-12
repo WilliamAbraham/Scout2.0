@@ -19,7 +19,10 @@ import {
   pursuitStage,
   pursuits,
   searchProfiles,
+  threadMessages,
   userListings,
+  workerLeases,
+  workerRuns,
 } from './schema/index.ts';
 
 /**
@@ -85,7 +88,7 @@ test('tables holding secrets are unreachable through PostgREST', () => {
   // browser bundle. RLS enabled with zero policies denies every request that
   // arrives that way, while the worker connects as table owner and bypasses
   // it. A policy added to either table below would expose refresh tokens.
-  for (const table of [gmailTokens, processedMessages]) {
+  for (const table of [gmailTokens, processedMessages, workerLeases, workerRuns]) {
     const config = getTableConfig(table);
     assert.equal(config.enableRLS, true, `${config.name} must enable RLS`);
     assert.equal(config.policies.length, 0,
@@ -96,7 +99,7 @@ test('tables holding secrets are unreachable through PostgREST', () => {
 test('every tenant table enables RLS and scopes its policies to the owner', () => {
   const tenantTables = [
     listings, userListings, gmailAccounts, searchProfiles,
-    documents, pursuits, pursuitEvents,
+    documents, pursuits, pursuitEvents, threadMessages,
   ];
 
   for (const table of tenantTables) {
@@ -126,12 +129,14 @@ test('every tenant table enables RLS and scopes its policies to the owner', () =
 test('the agent log and the feed stay read-only to the dashboard', () => {
   // The dashboard resolves escalations and dismisses listings. It never writes
   // the record of what the agent emailed on the user's behalf.
-  const writable = (table: typeof pursuitEvents) => getTableConfig(table).policies
+  const writable = (table: Parameters<typeof getTableConfig>[0]) => getTableConfig(table).policies
     .filter(policy => policy.for !== 'select')
     .map(policy => policy.for);
 
   assert.deepEqual(writable(pursuitEvents), [],
     'pursuit_events is an append-only audit trail written by the worker');
+  assert.deepEqual(writable(threadMessages), [],
+    'thread_messages is the verbatim mail record, written only by the worker');
 });
 
 test('the escalation reasons match the ones the dashboard must resolve', () => {

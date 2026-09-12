@@ -18,7 +18,7 @@
     "dev:api": "PORT=4000 npm run start -w @scout/backend",
     "enrich": "node backend/scripts/enrichListing.ts",
     "worker": "npm run worker -w backend",
-    "watch-inbox": "npm run watch-inbox -w backend",
-    "enrich:agent": "node backend/scripts/enrichAgent.ts"
+    "enrich:agent": "node backend/scripts/enrichAgent.ts",
+    "worker:status": "npm run worker:status -w backend"
   }
 }

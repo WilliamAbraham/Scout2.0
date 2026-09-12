@@ -1,9 +1,12 @@
 import type {ContactSnapshot} from '../db/schema/pursuits.ts';
 import type {EmailListing, EnrichmentResult} from '../enrichment/service.ts';
-import {parseListing} from '../gmail/listings.ts';
+import {parseAlert} from '../gmail/alert.ts';
+import type {AlertLayout, MalformedCard} from '../gmail/alert.ts';
 import type {Listing as GmailListing} from '../gmail/listings.ts';
 import {isStreetEasyAlert} from './brokerage.ts';
 import {contactSnapshotFromEnrichment} from './contacts.ts';
+import {isRetryable} from './contracts.ts';
+import type {EnrichmentFailure} from './contracts.ts';
 import {gmailListingToEmailInput} from './listingInput.ts';
 
 /** What the pipeline needs from an alert message. `RawMessage` satisfies it. */
@@ -11,6 +14,7 @@ export type AlertMessage = {
   id: string;
   from: string;
   date: string;
+  subject?: string | undefined;
   htmlBody: string | null;
 };
 
@@ -38,6 +42,12 @@ export type AlertStore = {
     snapshot: ContactSnapshot | null,
     summary: Record<string, unknown>,
   ): Promise<void>;
+  /** Record an enrichment attempt worth repeating, without escalating. */
+  noteEnrichmentDeferred(
+    userId: string,
+    pursuitId: string,
+    summary: Record<string, unknown>,
+  ): Promise<void>;
 };
 
 export type AlertPipelineDeps = {
@@ -49,12 +59,23 @@ export type AlertListingOutcome =
   /** Persisted with a verified contact; the worker's open step sends outreach. */
   | {rentalId: string; status: 'ready'; pursuitId: string}
   | {rentalId: string; status: 'needs_human'; pursuitId: string; reason: string}
+  /**
+   * Persisted, but enrichment could not finish for a reason that may pass:
+   * a source outage, or the day's budget. The pursuit stays un-enriched and
+   * the message is retried, so nothing is escalated to the owner prematurely
+   * and nothing is paid for twice in the same cycle.
+   */
+  | {rentalId: string; status: 'deferred'; pursuitId: string; reason: string; detail: string}
   | {rentalId: string; status: 'skipped'; reason: 'not_matched' | 'already_enriched' | 'missing_html'}
   | {rentalId: string; status: 'error'; reason: string};
 
 export type AlertMessageResult = {
   messageId: string;
+  /** Which template the mail used; `unsupported` means no card matched. */
+  layout: AlertLayout;
   listings: AlertListingOutcome[];
+  /** Cards that failed validation. Their siblings still landed. */
+  malformed: MalformedCard[];
 };
 
 /** The subset of an enrichment result worth keeping on the pursuit timeline. */
@@ -78,6 +99,30 @@ export function summarizeEnrichment(result: EnrichmentResult): Record<string, un
     warnings: result.warnings,
     checkedAt: result.checkedAt,
   };
+}
+
+/**
+ * Classify what enrichment came back with. The distinction that matters is
+ * whether paying again could produce a different answer: a missing contact is
+ * permanent for this listing, a dead source or an exhausted allowance is not.
+ */
+export function classifyEnrichment(result: EnrichmentResult): EnrichmentFailure | null {
+  if (result.execution === 'budget_exhausted') {
+    return {kind: 'budget_exhausted', detail: 'Daily enrichment budget is exhausted'};
+  }
+  if (result.resolution === 'owner_listed') {
+    return {kind: 'owner_listed', detail: 'Owner-listed: no broker to contact'};
+  }
+  if (result.execution === 'error') {
+    return {kind: 'transient', detail: result.issues.join('; ') || 'Enrichment source failed'};
+  }
+  if (contactSnapshotFromEnrichment(result) === null) {
+    return {kind: 'no_contact', detail: 'No verified contact email found'};
+  }
+  if (!result.outreachReady) {
+    return {kind: 'incomplete', detail: `Enrichment incomplete: ${result.issues.join('; ') || result.status}`};
+  }
+  return null;
 }
 
 /** Drizzle wraps driver errors; the Postgres message is on `cause`. */
@@ -107,25 +152,22 @@ export async function processListingAlert(
     }
 
     const enrichment = await deps.enrich(gmailListingToEmailInput(listing));
-    const snapshot = contactSnapshotFromEnrichment(enrichment);
     const summary = summarizeEnrichment(enrichment);
+    const failure = classifyEnrichment(enrichment);
 
-    if (!snapshot) {
-      const reason = enrichment.resolution === 'owner_listed' ? 'owner_listed' : 'no_contact';
-      await deps.store.saveEnrichment(userId, pursuitId, null, {
-        ...summary,
-        note: reason === 'owner_listed' ? 'Owner-listed: no broker to contact' : 'No verified contact email found',
-      });
-      return {rentalId, status: 'needs_human', pursuitId, reason};
+    if (failure && isRetryable(failure)) {
+      // Leave `enrichedAt` null so the next attempt picks the pursuit back up,
+      // and record the reason on the timeline without escalating to the owner.
+      await deps.store.noteEnrichmentDeferred(userId, pursuitId, {...summary, note: failure.detail});
+      return {rentalId, status: 'deferred', pursuitId, reason: failure.kind, detail: failure.detail};
     }
-    if (!enrichment.outreachReady) {
-      await deps.store.saveEnrichment(userId, pursuitId, null, {
-        ...summary,
-        note: `Enrichment incomplete: ${enrichment.issues.join('; ') || enrichment.status}`,
-      });
-      return {rentalId, status: 'needs_human', pursuitId, reason: 'enrichment_incomplete'};
+    if (failure) {
+      await deps.store.saveEnrichment(userId, pursuitId, null, {...summary, note: failure.detail});
+      return {rentalId, status: 'needs_human', pursuitId, reason: failure.kind};
     }
 
+    const snapshot = contactSnapshotFromEnrichment(enrichment);
+    if (!snapshot) throw new Error('enrichment classified as ready but produced no contact');
     await deps.store.saveEnrichment(userId, pursuitId, snapshot, summary);
     return {rentalId, status: 'ready', pursuitId};
   } catch (error) {
@@ -134,11 +176,15 @@ export async function processListingAlert(
       // Nothing persisted: the worker leaves the alert unprocessed so it retries.
       return {rentalId, status: 'error', reason};
     }
-    // Enrichment failed after the pursuit exists. Surface it to the owner as a
-    // blocker rather than retrying a paid step every cycle.
+    // Enrichment threw after the pursuit exists. That is a source or provider
+    // failure, not a verdict about the listing, so it is deferred for a
+    // bounded retry rather than escalated to the owner or charged again now.
     try {
-      await deps.store.saveEnrichment(userId, pursuitId, null, {status: 'error', note: `Enrichment failed: ${reason}`});
-      return {rentalId, status: 'needs_human', pursuitId, reason: 'enrichment_error'};
+      await deps.store.noteEnrichmentDeferred(userId, pursuitId, {
+        status: 'error',
+        note: `Enrichment failed: ${reason}`,
+      });
+      return {rentalId, status: 'deferred', pursuitId, reason: 'transient', detail: reason};
     } catch (saveError) {
       return {rentalId, status: 'error', reason: `${reason}; and saving the failure also failed: ${errorMessage(saveError)}`};
     }
@@ -151,18 +197,23 @@ export async function processStreetEasyAlert(
   deps: AlertPipelineDeps,
 ): Promise<AlertMessageResult> {
   if (!isStreetEasyAlert(message.from)) {
-    return {messageId: message.id, listings: []};
+    return {messageId: message.id, layout: 'empty', listings: [], malformed: []};
   }
   if (!message.htmlBody) {
-    return {messageId: message.id, listings: [{rentalId: 'unknown', status: 'skipped', reason: 'missing_html'}]};
+    return {
+      messageId: message.id,
+      layout: 'unsupported',
+      listings: [{rentalId: 'unknown', status: 'skipped', reason: 'missing_html'}],
+      malformed: [],
+    };
   }
 
   const receivedAt = new Date(message.date);
   const source = {messageId: message.id, receivedAt: Number.isNaN(receivedAt.getTime()) ? new Date() : receivedAt};
-  const cards = await parseListing(message.htmlBody);
+  const parsed = await parseAlert(message.htmlBody, {subject: message.subject});
   const listings: AlertListingOutcome[] = [];
-  for (const listing of cards) {
+  for (const listing of parsed.cards) {
     listings.push(await processListingAlert(userId, source, listing, deps));
   }
-  return {messageId: message.id, listings};
+  return {messageId: message.id, layout: parsed.layout, listings, malformed: parsed.malformed};
 }

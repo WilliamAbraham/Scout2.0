@@ -17,9 +17,9 @@
     "typecheck:enrichment": "tsc -p tsconfig.enrichment.json",
     "typecheck": "tsc",
     "worker": "node scripts/worker.ts",
-    "watch-inbox": "node scripts/watchInbox.ts",
     "test": "node --test \"src/**/*.test.ts\"",
-    "enrich:agent": "node scripts/enrichAgent.ts"
+    "enrich:agent": "node scripts/enrichAgent.ts",
+    "worker:status": "node scripts/worker.ts --status"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",

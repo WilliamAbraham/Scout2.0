@@ -29,6 +29,13 @@
       "when": 1789247550779,
       "tag": "0003_pursuit_follow_ups",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789253654054,
+      "tag": "0004_worker_ledger",
+      "breakpoints": true
     }
   ]
 }

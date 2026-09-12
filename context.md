@@ -6,6 +6,27 @@ Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source r
 
 Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). These documents reflect a source audit, not a new live test. The worker still uses the older enrichment provider, refuses live sending, and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings, and restart-safe spending/delivery remain pending. Local uncommitted one-email runner/contact-adapter work must be coordinated with its author. No backend behavior changes or live sends were made for this documentation task. Validation: all 154 tests passed with Node type stripping enabled, documentation links and `git diff --check` passed, and `yarn lint` remained unavailable because no root lint script exists.
 
+## Continuous worker (2026-09-12, branch `worktree-claude`)
+
+The ingestion workstream in [docs/backend/Claude.md](docs/backend/Claude.md) is implemented. `backend/scripts/worker.ts` is the single entry point; the separate inbox watcher and its module were deleted. Operations are documented in [the worker guide](docs/backend/worker-operations.md).
+
+- **Checkpointed sync.** `src/gmail/sync.ts` polls from `gmail_accounts.history_id` and falls back to a date-bounded catch-up when history has aged out, capped at 14 days and reported as truncated beyond that. The cursor advances only after every message in a batch is durably accounted for.
+- **Routing.** `src/pipeline/routing.ts` classifies mail as alert, reply, or noise. Replies match a pursuit by Gmail thread id first and sender address second; the mailbox's own outbound copies are never treated as replies. `thread_messages` stores every inbound and outbound email, so a reply after a restart still routes to the same pursuit with its history.
+- **Parser.** `src/gmail/alert.ts` isolates each card, so a malformed listing does not discard its siblings, and distinguishes an unsupported template from an empty notice. Replayed across all 90 cached messages: 292 cards, 0 malformed, 1 correctly classified non-alert. StreetEasy caps alerts at five cards even when the subject claims more.
+- **Ledger.** `processed_messages` gained status, attempts, backoff, last error, and outcome. Failures retry roughly 5m/20m/80m and then become `exhausted`, which stays visible in `npm run worker:status`.
+- **Enrichment outcomes.** `classifyEnrichment` separates permanent failures (no contact, owner-listed) from retryable ones (dead source, exhausted budget). Retryable ones are deferred without escalating to the owner and without re-charging enriched listings.
+- **Concurrency.** `worker_leases` holds the mailbox for one process, renewed between messages; a second worker declines. Overlapping ticks are skipped. `SIGINT`/`SIGTERM` finish the message in flight, release the lease, and exit.
+- **One mailbox, one user.** The worker refuses to start when more than one user has a search profile, since there is a single local token.
+- `--live` is still refused: `sendMail` is a stub.
+
+Migration `0004_worker_ledger` adds `thread_messages`, `worker_leases`, `worker_runs`, and the ledger columns. It was applied to the live database on 2026-09-12.
+
+Verification: `npm run typecheck` passes and all 199 backend tests pass, including `src/pipeline/pipeline.test.ts`, which drives a fixture alert through the real parser, store, matcher, enrichment seam, and outreach handoff, and covers duplicate mail, restart, concurrent workers, malformed cards, unsupported templates, transient failures, and budget exhaustion.
+
+Live checks on 2026-09-12 against the real mailbox (`williamsaibroker@gmail.com`) and Supabase, all in dry-run: migration `0004_worker_ledger` applied; `npm run worker -- --once` completed cleanly and exited in about ten seconds; `npm run worker:status` reports the run, the ledger, and 12 matched pursuits with 9 blocked on `no_contact`. Sync ran in incremental mode from the stored history id and correctly found nothing new, because an earlier cycle had already consumed the recent mail. **The alert to enrichment to draft path was therefore not exercised live in this session** — no new StreetEasy mail arrived during it. The first live attempt did expose a real bug, a Date bound into raw SQL in the lease query, which is fixed and covered by the offline tests.
+
+Root `yarn lint` still has no script.
+
 ## Persisted worker pipeline (2026-09-12, branch `worktree-claude`)
 
 The worker now runs the whole alert path against Postgres in one cycle: Gmail alert sync → `listings`/`user_listings` upsert → deterministic match against `search_profiles` → `pursuits` row → broker enrichment → `contact_snapshot` or `needs_human: no_contact` → outreach turn. `backend/src/pipeline/postgresStore.ts` is the single persistence adapter (it implements the worker's `WorkerStore` and the alert stage's `AlertStore`); `backend/src/pipeline/match.ts` is the budget/bedroom hard filter; `backend/scripts/worker.ts` is the only entry point. `processAlerts.ts` and the file-based processed-id set were removed.
