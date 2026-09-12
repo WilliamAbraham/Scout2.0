@@ -51,7 +51,12 @@ function ContactForm({
 
   const unavailable = disabled || pending;
   return (
-    <form action={action} className={styles.form} aria-busy={pending}>
+    <form
+      action={action}
+      className={styles.form}
+      aria-busy={pending}
+      onReset={(event) => event.preventDefault()}
+    >
       <input type="hidden" name="command" value="supply_contact" />
       <input type="hidden" name="pursuit_id" value={pursuitId} />
       <input
@@ -118,7 +123,9 @@ function ContactForm({
         {pending ? "Saving contact…" : "Use this contact"}
         <ChevronRight aria-hidden="true" />
       </button>
-      <ActionFeedback state={state} onRefresh={onRefresh} />
+      {state.command === "supply_contact" &&
+        state.pursuitId === pursuitId &&
+        !pending && <ActionFeedback state={state} onRefresh={onRefresh} />}
     </form>
   );
 }
@@ -147,7 +154,9 @@ export function LiveClosePursuitControl({
       <p className={styles.timingNote}>
         Applies to the next worker cycle. Work already in flight may finish.
       </p>
-      <ActionFeedback state={state} onRefresh={onRefresh} />
+      {state.command === "close" &&
+        state.pursuitId === pursuitId &&
+        !pending && <ActionFeedback state={state} onRefresh={onRefresh} />}
     </form>
   );
 }

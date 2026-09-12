@@ -362,6 +362,21 @@
 .commandError svg {
   width: 12px;
 }
+.commandResults .commandDismiss {
+  flex-shrink: 0;
+  min-width: 36px;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+@media (max-width: 960px) {
+  .commandResults .commandDismiss {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
 .listScroll {
   flex: 1;
   min-height: 0;

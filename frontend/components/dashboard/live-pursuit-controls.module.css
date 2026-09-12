@@ -48,7 +48,7 @@
   font-size: 12px;
   font-weight: 500;
 }
-.primaryButton:hover:not(:disabled) {
+.form .primaryButton:hover:not(:disabled) {
   background: #1b5135;
 }
 .form :disabled,

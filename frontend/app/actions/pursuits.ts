@@ -11,7 +11,13 @@ export async function submitPursuitCommand(
 ): Promise<CommandActionState> {
   const result = await executePursuitCommand(await createClient(), form);
   if (!result.error) revalidatePath("/dashboard");
-  return result;
+  const command = form.get("command");
+  const pursuitId = form.get("pursuit_id");
+  return {
+    ...result,
+    ...(command === "supply_contact" || command === "close" ? { command } : {}),
+    ...(typeof pursuitId === "string" ? { pursuitId } : {}),
+  };
 }
 
 export async function setSearchPaused(

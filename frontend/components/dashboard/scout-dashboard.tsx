@@ -57,7 +57,11 @@ import {
 import { SearchPauseControl } from "./search-pause-control";
 import { setSearchPaused, submitPursuitCommand } from "@/app/actions/pursuits";
 import type { CommandActionState } from "@/lib/inbox-command";
-import { profileSummary, sampleProfile, signedOutPreferences } from "@/lib/search-profile";
+import {
+  profileSummary,
+  sampleProfile,
+  signedOutPreferences,
+} from "@/lib/search-profile";
 import type { PreferencesContext, SearchProfile } from "@/lib/search-profile";
 import styles from "./scout-dashboard.module.css";
 
@@ -610,7 +614,12 @@ export function ScoutDashboard({
                                 </td>
                                 <td className={styles.rentCell}>
                                   <strong>{money(item.rent)}</strong>
-                                  <small>{beds(item.beds)}{item.baths !== null ? ` · ${item.baths} bath` : ""}</small>
+                                  <small>
+                                    {beds(item.beds)}
+                                    {item.baths !== null
+                                      ? ` · ${item.baths} bath`
+                                      : ""}
+                                  </small>
                                 </td>
                                 <td className={styles.progressCell}>
                                   <span
@@ -701,7 +710,13 @@ export function ScoutDashboard({
                 key={selected.id}
                 item={selected}
                 mode={mode}
-                profile={mode === "demo" ? sampleProfile : preferencesContext.profileError ? null : preferencesContext.profile}
+                profile={
+                  mode === "demo"
+                    ? sampleProfile
+                    : preferencesContext.profileError
+                      ? null
+                      : preferencesContext.profile
+                }
                 canUndo={Boolean(previous[selected.id])}
                 onUndo={() => undo(selected)}
                 onResolve={(value) => {
@@ -830,7 +845,8 @@ function MutationResult({
   state: CommandActionState;
   onRefresh: () => void;
 }) {
-  if (!state.error && !state.message) return null;
+  const [dismissed, setDismissed] = useState<CommandActionState | null>(null);
+  if (dismissed === state || (!state.error && !state.message)) return null;
   return (
     <div
       className={state.error ? styles.commandError : styles.commandSuccess}
@@ -844,6 +860,14 @@ function MutationResult({
           <RefreshCw aria-hidden="true" /> Refresh inbox
         </button>
       )}
+      <button
+        type="button"
+        className={styles.commandDismiss}
+        aria-label={`Dismiss ${label.toLowerCase()}`}
+        onClick={() => setDismissed(state)}
+      >
+        <X aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -1041,7 +1065,11 @@ function ApartmentDetails({
       </div>
       {tab === "Overview" ? (
         <div className={styles.overview}>
-          <ListingSnapshot item={item} profile={profile} demo={mode === "demo"} />
+          <ListingSnapshot
+            item={item}
+            profile={profile}
+            demo={mode === "demo"}
+          />
           <section>
             <h3>
               {item.assessment === "not_fit"
@@ -1085,7 +1113,9 @@ function ApartmentDetails({
           <section>
             <h3>Listing source</h3>
             <p>Received {timestamp(item.observedAt)}</p>
-            {item.lastSeenAt && <p>Last seen in alerts {timestamp(item.lastSeenAt)}</p>}
+            {item.lastSeenAt && (
+              <p>Last seen in alerts {timestamp(item.lastSeenAt)}</p>
+            )}
             <p>Availability and current price have not been rechecked.</p>
             {item.sourceUrl ? (
               <a href={item.sourceUrl} target="_blank" rel="noreferrer">

@@ -27,10 +27,10 @@
   color: var(--green);
 }
 .comparison.outside {
-  border-left-color: #95652b;
+  border-left-color: var(--amber);
 }
 .comparison.outside strong {
-  color: #80521d;
+  color: var(--amber);
 }
 .snapshot .comparison p {
   margin: 4px 0 0;

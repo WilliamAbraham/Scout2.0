@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 export type CommandActionState = {
   error: string | null;
   message: string | null;
+  command?: "supply_contact" | "close";
+  pursuitId?: string;
 };
 export type PursuitCommand = {
   command: "supply_contact" | "close";
