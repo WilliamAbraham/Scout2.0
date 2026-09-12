@@ -12,7 +12,22 @@ Discovery receives that source text when available and includes New York in addr
 
 For JSON callers, add `"listingUrl": "https://streeteasy.com/rental/<actual-rental-id>"` using the URL from the email. Do not seed expected broker names. `discovery_retry` transcripts are saved separately. Cache policy was bumped so older search-only results are not reused.
 
-The preceding single-listing test of **620 East 6th Street #9A** cost **$0.006410748** and missed Fatma Kara, who is visible in the user's subsequent screenshot. New offline fixtures cover this layout and recovery behavior, but deliberately supplied fixture responses are **not proof of independent live discovery**. This upgrade has not been run against OpenRouter yet; its actual cost and live broker recall are unmeasured. The old 0.52¢ average must not be presented as the upgraded pipeline's measured rate.
+The preceding single-listing test of **620 East 6th Street #9A** cost **$0.006410748** and missed Fatma Kara, who is visible in the user's subsequent screenshot. New offline fixtures cover this layout and recovery behavior, but deliberately supplied fixture responses are **not proof of independent live discovery**. The subsequent approved rerun of the upgraded agent cost **$0.008392432 (0.84¢)** and still missed Fatma Kara; see the live regression result below. The old 0.52¢ average must not be presented as the upgraded pipeline's measured rate.
+
+## Live regression result (2026-09-12)
+
+One user-requested rerun used the original 620 East 6th Street #9A input, GPT-4.1 Mini / Parallel fast, `--refresh`, and a shared $0.05 request budget. No expected name or screenshot was supplied. The original input has no listing URL, so this run tested search recovery, **not the new direct-page reader**. Artifacts are in ignored `data/enrichment/east-6th-9a-test/upgraded-run-1/`.
+
+| Stage | API-reported cost | Reported searches |
+| --- | ---: | ---: |
+| Discovery | $0.000603900 | None reported |
+| Discovery recovery | $0.003508760 | 2 |
+| Contacts | $0.004279772 | 2 |
+| Total | **$0.008392432** | **4** |
+
+The API stages completed, but listing status remained `unresolved` and no broker attribution was supported. Discovery returned Judith Mei with an uncited listing URL; recovery proposed Jules Borbely from a company listing without the target address/unit in its excerpt. Both were retained as `needs_review`, not accepted listing brokers. The contact-stage source subsequently identified Jules's property as **210 East 36th Street #6-C**, a different listing. Neither candidate is a result for 620 East 6th Street #9A.
+
+The only supported channel was FIND's general office email/phone, hello@findrealestate.com and +1 212 994 9965. The model also duplicated those office values under Jules's personal contact fields despite explicitly noting that they were generic. Current contact validation checks cited values, not personal-versus-office ownership; this is an additional unresolved defect. The factual association gate prevented accepted broker attribution, but did not fix retrieval or prevent wasted contact research on unsupported candidates. No further paid attempts were made in this test. Live search recovery failed; direct-URL retrieval remains unverified.
 
 ## Usage
 
@@ -62,7 +77,7 @@ Results with discovered people or contact routes are cached for one hour; comple
 
 Direct source pages retain their existing one-hour cache. Failed/partial result objects are not stored in the complete-result cache. Changes to cache semantics or verification rules must bump the policy version.
 
-Model contacts require valid format, a supporting excerpt, and a matching provider citation. Multiple excerpts for a URL are accumulated; a later masked page cannot erase earlier email evidence. A masked model email excerpt can be replaced only by actual cited provider text containing that email. No email patterns are guessed. Generic office channels remain separate from individual broker contacts.
+Model contacts require valid format, a supporting excerpt, and a matching provider citation. Multiple excerpts for a URL are accumulated; a later masked page cannot erase earlier email evidence. A masked model email excerpt can be replaced only by actual cited provider text containing that email. No email patterns are guessed. The schema separates generic office channels from individual contacts, but the live regression below exposed a model duplicating office values into a candidate’s personal fields; ownership validation still needs a fix.
 
 `source_cited` requires matching model-reported address/unit and a citation URL, plus the name/address/unit in citation text when text is available. Directly fetched listing text is retained as source evidence too. This is not independent proof that the roster is complete or current; excerpt-only or historical sources need review. Unit conflicts remain review candidates. The previous search-only version missed Jake Vitale for 423 West #1C; live recovery of that co-agent remains unverified.
 
