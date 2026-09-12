@@ -20,11 +20,13 @@ The implemented demo uses the local agentAI three-pane layout requested by the u
 
 Earlier UX research used [progressive disclosure guidance](https://www.nngroup.com/articles/progressive-disclosure/), [Google PAIR's transparency/control patterns](https://pair.withgoogle.com/guidebook-v2/patterns), and [Zillow's 2025 renter research](https://www.zillow.com/research/renters-housing-trends-report-2025-35647/). The latest screenshot-driven layout supersedes the earlier single-page/modal experiment. This is a product design decision, not a completed study with Scout users. Routine work within the owner's authorization should proceed without making the user approve every listing. The inbox prioritizes blockers and commitments; supporting activity is available on demand, and uncalibrated match scores are omitted.
 
+The [inbox/process review](docs/reviews/2026-09-12-inbox-process-review.md) proposes separating incoming-listing assessment, pursuit progress, and attention/next action. It recommends a wide grouped inbox with a selected-apartment detail pane and an alternate map view. This is a proposal for discussion; the current three-pane implementation remains unchanged.
+
 The proposed loop is:
 
 `onboard → ingest → match → enrich → outreach → converse → schedule → apply`
 
-Escalation is orthogonal to stage: a pursuit retains its stage while `needs_human` is set. Proposed reasons are `no_contact`, `unanswerable_question`, `no_fitting_slot`, `portal_link`, `missing_document`, and `decision`. Each needs a corresponding dashboard resolve action. The spec does not yet define complete stage transitions, multiple simultaneous blockers, or resume semantics.
+Escalation is orthogonal to stage: the current schema uses a nullable `needsHumanReason` as the flag and preserves `stage`. The reason values are `no_contact`, `unanswerable_question`, `no_fitting_slot`, `portal_link`, `missing_document`, and `decision`. Each needs a corresponding dashboard resolve action. The implemented stage enum is `matched`, `contacted`, `tour_scheduled`, `toured`, `applied`, `decided`, `dead`; the hackathon prose's `ready_to_contact`/`closed` vocabulary needs reconciliation. No runtime worker transitions were found, and multiple blockers/resume semantics still need a contract.
 
 ## Automation boundary in the proposal
 
@@ -47,7 +49,7 @@ The proposal adds OpenAI for matching, extraction, conversation, and natural-lan
 
 Worker state lives in Postgres. A turn loads persisted pursuit state and its mail thread. No agent framework or separate queue service is proposed. Durable action records and bounded tool execution still need design; process simplicity does not supply retry correctness.
 
-Listings must retain source identity, while pursuits and inbox observations belong to an account/household. The exact tenant, membership, authorization, and data-access schema is unresolved. The existing global `rental_id` table is not that schema.
+The implemented schema separates global listings keyed by StreetEasy `rental_id`, per-user `user_listings` with match results, and per-user pursuits with blockers, thread references and event records. RLS policies and separate Google token storage exist in source; live migration/access behavior was not verified in this review. The current importer still writes global listings only. Runtime per-user ingestion, matching, commands, outreach and scheduling remain unimplemented; shared-household membership is also unresolved.
 
 ## Contact enrichment direction
 

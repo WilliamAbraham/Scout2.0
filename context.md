@@ -13,6 +13,17 @@ Pulled `origin/main` through `f9b1b76` on 2026-09-12 into `codex/dashboard-first
 
 The review and dashboard verification sections below describe earlier snapshots; this integration status supersedes their statements about absent tenant schema, enrichment implementation, ignored migrations, and the missing test target.
 
+## Inbox/process review — current source, 2026-09-12
+
+The [new review](docs/reviews/2026-09-12-inbox-process-review.md) maps the product process to the current schema and proposes the next UX iteration. It is a proposal, not an accepted contract or an application change.
+
+- Runtime intake is CLI Gmail collection/cache, StreetEasy parsing and global listing import. The importer only fills missing brokerage on duplicate rental IDs; it does not refresh price/observation times or populate `user_listings`.
+- Broker enrichment is a standalone, tested service with source evidence, candidate contacts, readiness and execution outcomes. It is not wired to pursuits or the UI. `source_matched` validates apartment identity, not user preference matching; incomplete lookup is not a confirmed missing contact.
+- The schema now has per-user match decisions, pursuits with independent blockers, contact/thread snapshots, events, profile/pause and Gmail health metadata. No runtime matcher, worker, command handler, broker reply router, email sender or calendar integration was found. The backend HTTP surface remains `/health` only.
+- The proposal separates incoming assessment from pursuit stage and next-action ownership. It retains Needs you as a priority view, recommends wider grouped rows and an alternate map, and requires worker-confirmed outcomes for live status changes.
+- `yarn test`: 72 tests passed again. `yarn lint`: failed because the root script is missing. Review checked source and mocked tests; no live mailbox, migration or database operations ran.
+- Dashboard PR #2 is merged into `origin/main` at `3fedd6a`. This documentation review starts from that commit on `codex/inbox-process-review`.
+
 ## Implemented in source at the earlier review
 
 - Root npm workspaces: `@scout/backend` and `@scout/frontend`, with a tracked `package-lock.json`.
@@ -40,7 +51,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run lint -w frontend` | Frontend ESLint; no backend lint script |
 | `npm run build -w frontend` | Frontend production build |
 | `yarn lint` | Required convention; currently fails because root script is absent |
-| `yarn test` | Required convention; backend script targets missing `src/gmail/listings.test.ts` |
+| `yarn test` | Required convention; backend test discovery passes 72 schema/enrichment tests |
 | `npm run sync` | Gmail message corpus discovery/cache workflow |
 | `npm run inspect -- <messageId>` | Inspect cached/raw mail; output can contain personal information |
 | `npm run survey -- --offline` | Cached corpus survey |
@@ -54,7 +65,7 @@ Root `.env` supplies backend `DATABASE_URL`; `frontend/.env.local` supplies the 
 
 Local setup on 2026-09-12: the user-provided Supabase settings are configured in those ignored environment files. Environment parsing and required values were checked; live authentication and database connectivity remain unverified. Teammates must configure their own local copies; credentials are not included in Git.
 
-The initial Drizzle migration and metadata are tracked, but `.gitignore` also ignores `backend/drizzle/`. Future migrations can therefore be omitted accidentally; resolve this before schema implementation.
+Drizzle migrations and metadata are tracked; the upstream integration removed the migration ignore rule. No migrations were applied during this review.
 
 Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated guidance in `frontend/AGENTS.md` before frontend code changes; this documentation task leaves that file intact.
 
@@ -98,7 +109,7 @@ The design now assigns A the entire agentic pipeline, including ingestion/matchi
 
 See [the detailed review](docs/reviews/2026-09-12-product-design-review.md). For the demo, agree a minimal schema and state contract, restrict access to the intended demo account, and define send behavior before enabling real outreach. Full roommate boundaries and packet-release rules are required only when those features are enabled.
 
-Restore working lint/test gates as focused implementation work; do not call the existing scripts passing checks. Establish the parser fixture baseline and migration reproducibility before building on the pipeline.
+Restore the root lint gate as focused implementation work. The current 72 schema/enrichment tests pass; establish parser fixtures and live migration/integration verification before claiming a complete pipeline.
 
 ## Historical documents
 
