@@ -17,7 +17,7 @@
     "typecheck:enrichment": "tsc -p tsconfig.enrichment.json",
     "typecheck": "tsc",
     "extract": "node scripts/extract.ts",
-    "test": "node --test src/enrichment/*.test.ts"
+    "test": "node --test"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",

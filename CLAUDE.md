@@ -13,7 +13,7 @@ Run installs from the **repo root** only — a `frontend/node_modules/` or `back
 ```bash
 npm install                      # from repo root
 npm run typecheck                # tsc across every workspace
-npm run test                     # backend's enrichment validation and workflow tests
+npm run test                     # node --test, auto-discovering every src/**/*.test.ts
 npm run enrich -- backend/fixtures/enrichment/118-mulberry-r4.json
 npm run typecheck:enrichment -w backend  # isolated enrichment typecheck
 npm run dev:web                  # next dev, port 3000 (frontend/package.json also has its own `dev`)
@@ -32,7 +32,7 @@ node --experimental-strip-types backend/scripts/importListings.ts   # parse cach
 
 Database (drizzle-kit, Postgres via Supabase):
 ```bash
-npm run db:generate -w backend   # generate a migration from src/db/schema.ts
+npm run db:generate -w backend   # generate a migration from src/db/schema/
 npm run db:migrate -w backend    # apply backend/drizzle/*.sql via scripts/migrate.ts
 ```
 
@@ -55,7 +55,19 @@ The pipeline is staged as separate, independently re-runnable steps, each backed
 3. **`backend/src/gmail/message.ts`** — flattens a raw Gmail message resource into `RawMessage` (subject/from/date/text/html), walking the MIME tree to find the right body part. Pure, no I/O.
 4. **`backend/src/gmail/listings.ts`** — `parseListing()` uses `cheerio` to pull `.ListingCard` elements out of the email HTML into structured listings, then `resolveRentalUrl()` follows the email's tracking-link redirect chain (capped at 5 hops) to the canonical `streeteasy.com/rental/<id>` URL. Note the intentional typo-matched selector `.ListinCard-info--detailsContainer` — StreetEasy's own markup misspells it.
 5. **`backend/scripts/importListings.ts`** — reads every cached raw message, parses listings, and upserts into the `listings` table keyed on `rentalId` (see below), merging in a newly-observed `brokerage` only if one wasn't already recorded.
-6. **`backend/src/db/schema.ts`** — the `listings` table (Drizzle + Postgres check constraints enforce numeric `rentalId`, non-empty `address`, positive `price`, non-negative bed/bath counts, and `lastSeenAt >= firstSeenAt`). `backend/src/db/index.ts` loads `DATABASE_URL` from the root `.env` and connects with `prepare: false` (Supabase's transaction pooler doesn't support prepared statements).
+6. **`backend/src/db/schema/`** — the schema, split by subsystem (`enums`, `listings`, `gmail`, `profiles`, `pursuits`, `rls`) and re-exported from `index.ts`, which is what `drizzle.config.ts` points at. `backend/src/db/index.ts` loads `DATABASE_URL` from the root `.env` and connects with `prepare: false` (Supabase's transaction pooler doesn't support prepared statements).
+
+### Schema, RLS, and the two-person seam
+
+The schema is the coordination point between the backend agent and the dashboard (see `docs/superpowers/specs/2026-09-12-scout-product-design.md` §8). Three rules hold it together:
+
+- **Every tenant table has RLS enabled, and every policy calls `scout_owns(user_id)`.** The frontend authenticates with the publishable key — which ships in the browser bundle — so a `public` table without policies is an open table. `scout_owns` is a hand-written SQL function (drizzle-kit does not generate functions); it exists so that adding roommates later is a `CREATE OR REPLACE` rather than a rewrite of every policy. Keep it in sync with `SCOUT_OWNS_FUNCTION` in `src/db/schema/rls.ts` — `src/db/schema.test.ts` fails if they drift.
+- **`gmail_tokens` and `processed_messages` have RLS enabled and zero policies.** That denies everything arriving through PostgREST while the worker, connecting as table owner over `DATABASE_URL`, bypasses RLS. Never add a policy to them, and never mark them `FORCE ROW LEVEL SECURITY` — that would lock out the worker too.
+- **`scout_owns` lives in its own migration** (`drizzle/0001_scout_owns.sql`), ahead of the generated one that creates the policies. That is what makes `db:generate` safe to re-run — a regenerated schema migration cannot drop a definition held in an earlier file. Never fold the function into a generated migration.
+
+Two enums (`pursuit_stage`, `needs_human_reason`) are the frontend contract: every `needs_human_reason` value needs a matching resolve-flow in the dashboard's **Needs you** queue.
+
+The enrichment service (below) deliberately has no tables here: it returns contacts and writes nothing. `pursuits.contact_snapshot` (jsonb) is where outreach reads them from — also the honest record of who the agent actually emailed, which must not change when a brokerage page is re-scraped months later. Persisting enrichment results is a later, additive migration.
 
 **Enrichment** is implemented as a standalone service in `backend/src/enrichment/service.ts`, with `backend/scripts/enrichListing.ts` as its CLI. It prefers Tavily search when `TAVILY_API_KEY` is configured and uses Firecrawl for rendering/structured extraction and fallback search. It preserves all supported co-agents, verifies listing identity and contact evidence, and keeps index-only matches in review candidates. It does not send messages or update the database. See `docs/broker-enrichment.md` for input/output contracts, operational bounds and validation; `docs/broker-enrichment-findings.docx` contains the research report. `names.ts` retains the original design plan, including future campaign-date and batch-persistence requirements. Existing Playwright utilities remain available for site-specific investigation.
 
