@@ -28,3 +28,7 @@ npm-debug.log*
 out/
 next-env.d.ts
 .vercel
+
+# Local agent worktrees
+.claude/worktrees/
+.cursor/worktrees/
