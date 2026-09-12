@@ -1,6 +1,6 @@
 # Cost-controlled OpenRouter enrichment
 
-The `enrich:agent` command now defaults to GPT-4.1 Mini through the official OpenAI JavaScript SDK and OpenRouter. It requires an explicit dollar budget before making paid requests. No paid requests were made while implementing this optimization; the earlier $4.21 benchmark is historical and does not measure this version's accuracy or cost.
+The `enrich:agent` command now defaults to GPT-4.1 Mini through the official OpenAI JavaScript SDK and OpenRouter. It requires an explicit dollar budget before making paid requests. A subsequently approved [four-listing live test](mini-cost-benchmark-2026-09-12.md) cost $0.020800404 total, but found no named brokers and only three generic brokerage contact channels. Lower cost is measured; adequate enrichment quality is not established. The earlier $4.21 benchmark used a different email and configuration.
 
 ## Usage
 
@@ -60,7 +60,7 @@ Model contacts require valid format, a supporting excerpt, and a matching provid
 
 ## Verification
 
-98 enrichment tests and the isolated TypeScript check passed during optimization. Tests use mocked HTTP with the real OpenAI SDK and cover zero-budget rejection, shared batch spending, unknown charges, overruns, model/price/search restrictions, cache hits, expiry, changed units, concurrent duplicates, direct contact reuse, and roster preservation. These verify control flow, not the cheaper model's real-world extraction quality. A live quality/cost comparison needs a separately agreed budget.
+98 enrichment tests and the isolated TypeScript check passed during optimization. The full `yarn test` suite subsequently passed 123 tests during the live benchmark task; root `yarn lint` remains unavailable because no script exists. Tests use mocked HTTP with the real OpenAI SDK and cover zero-budget rejection, shared batch spending, unknown charges, overruns, model/price/search restrictions, cache hits, expiry, changed units, concurrent duplicates, direct contact reuse, and roster preservation. The approved live test measured cost but exposed insufficient broker discovery. Further paid experiments need an agreed budget.
 
 - [OpenRouter GPT-4.1 Mini pricing](https://openrouter.ai/openai/gpt-4.1-mini): $0.40/M input and $1.60/M output when checked September 12, 2026.
 - [Provider price filters](https://openrouter.ai/docs/guides/routing/provider-selection#max-price)

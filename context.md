@@ -2,6 +2,12 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Latest enrichment cost test
+
+On 2026-09-12, an approved $0.10 test processed all four listings from a different StreetEasy recommendation email with GPT-4.1 Mini / Parallel fast and a fresh local cache. Actual API-reported spend was $0.020800404 total (0.52¢ per listing), over eight stage requests and approximately 45 seconds. No named brokers were found; three listings returned generic company contact channels and one returned no contact details. This is a cost measurement, not successful listing-agent enrichment. See the [benchmark report](docs/enrichment/mini-cost-benchmark-2026-09-12.md).
+
+The prompt now matches the two-search allowance and available search-only tool. `yarn test` passes all 123 tests and the enrichment TypeScript check passes. `yarn lint` was attempted but the root lint script is still absent. The older review and integration snapshots below retain their historical status; these latest test results supersede old missing-test claims. Raw email and API artifacts remain in ignored `data/` directories.
+
 ## Latest upstream integration
 
 Pulled `origin/main` through `f9b1b76` on 2026-09-12 into `codex/dashboard-first-pass`. Resolved the `CLAUDE.md` conflict by retaining upstream backend guidance and local dashboard context.
@@ -40,7 +46,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run lint -w frontend` | Frontend ESLint; no backend lint script |
 | `npm run build -w frontend` | Frontend production build |
 | `yarn lint` | Required convention; currently fails because root script is absent |
-| `yarn test` | Required convention; backend script targets missing `src/gmail/listings.test.ts` |
+| `yarn test` | Required convention; passes 123 tests as of the latest enrichment cost test |
 | `npm run sync` | Gmail message corpus discovery/cache workflow |
 | `npm run inspect -- <messageId>` | Inspect cached/raw mail; output can contain personal information |
 | `npm run survey -- --offline` | Cached corpus survey |

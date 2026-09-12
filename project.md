@@ -51,6 +51,8 @@ Listings must retain source identity, while pursuits and inbox observations belo
 
 ## Contact enrichment direction
 
+Current measured status (2026-09-12): the optional GPT-4.1 Mini / OpenRouter path processed four new listings for 2.08¢ total, but returned no named brokers and only three generic company contact channels. It does not yet meet the listing-agent enrichment goal. The [live cost report](docs/enrichment/mini-cost-benchmark-2026-09-12.md) separates API execution from contact quality; lower spend alone is not a release criterion.
+
 Use generic fetch and extraction, with Playwright only when rendering is required. Do not scrape StreetEasy rental pages; resolve the canonical URL from the alert's redirect headers. Preserve verified brokerage identity and office address, especially for similarly named firms.
 
 Capture every explicitly attributed listing agent, including profile URL and source order. Do not infer primary status from order. The proposal prefers one outreach message to the verified contact set, with a general leasing inbox as fallback. Verification, contact freshness, unknown-primary addressing, and split-thread handling remain open in the review.
