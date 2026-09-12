@@ -13,7 +13,9 @@ Run installs from the **repo root** only — a `frontend/node_modules/` or `back
 ```bash
 npm install                      # from repo root
 npm run typecheck                # tsc across every workspace
-npm run test                     # backend's node --test suite (currently no test files exist)
+npm run test                     # backend's enrichment validation and workflow tests
+npm run enrich -- backend/fixtures/enrichment/118-mulberry-r4.json
+npm run typecheck:enrichment -w backend  # isolated enrichment typecheck
 npm run dev:web                  # next dev, port 3000 (frontend/package.json also has its own `dev`)
 npm run dev:api                  # backend HTTP server on port 4000 (only /health is wired up)
 ```
@@ -55,7 +57,7 @@ The pipeline is staged as separate, independently re-runnable steps, each backed
 5. **`backend/scripts/importListings.ts`** — reads every cached raw message, parses listings, and upserts into the `listings` table keyed on `rentalId` (see below), merging in a newly-observed `brokerage` only if one wasn't already recorded.
 6. **`backend/src/db/schema.ts`** — the `listings` table (Drizzle + Postgres check constraints enforce numeric `rentalId`, non-empty `address`, positive `price`, non-negative bed/bath counts, and `lastSeenAt >= firstSeenAt`). `backend/src/db/index.ts` loads `DATABASE_URL` from the root `.env` and connects with `prepare: false` (Supabase's transaction pooler doesn't support prepared statements).
 
-**Enrichment** (`backend/src/enrichment/`) is a separate, mostly-unbuilt pipeline for attaching listing-agent names by scraping brokerage sites with Playwright (`browser.ts` manages one shared headless browser; `brokerInfo.ts`'s `locatorFields()` lets a selector be probed against a live page before a parser depends on it). `backend/src/enrichment/names.ts` is a design doc/plan only — no code yet; read it before implementing this pipeline, since it specifies required verification steps (address/unit/price/date matching) before trusting a scraped agent roster.
+**Enrichment** is implemented as a standalone service in `backend/src/enrichment/service.ts`, with `backend/scripts/enrichListing.ts` as its CLI. It prefers Tavily search when `TAVILY_API_KEY` is configured and uses Firecrawl for rendering/structured extraction and fallback search. It preserves all supported co-agents, verifies listing identity and contact evidence, and keeps index-only matches in review candidates. It does not send messages or update the database. See `docs/broker-enrichment.md` for input/output contracts, operational bounds and validation; `docs/broker-enrichment-findings.docx` contains the research report. `names.ts` retains the original design plan, including future campaign-date and batch-persistence requirements. Existing Playwright utilities remain available for site-specific investigation.
 
 `backend/src/paths.ts` derives `REPO_ROOT`/`DATA_DIR` from `import.meta.url` so scripts behave the same regardless of invocation cwd. Everything generated (`data/`) lives outside both workspaces so either can read it, and is gitignored.
 

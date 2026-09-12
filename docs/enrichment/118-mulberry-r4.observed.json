@@ -1,0 +1,43 @@
+{
+  "artifactKind": "observed_summary",
+  "checkedAt": "2026-09-12T19:34:41.811Z",
+  "input": {
+    "address": "118 Mulberry Street",
+    "unit": "R4",
+    "brokerage": "DALLAL",
+    "brokerageOfficeAddress": "260 Madison Avenue, New York, NY 10016",
+    "city": "New York",
+    "price": 7495,
+    "bedrooms": 3,
+    "bathrooms": 1
+  },
+  "status": "needs_review",
+  "execution": "completed",
+  "rosterCompleteness": "unverified",
+  "outreachReady": false,
+  "agents": [],
+  "candidateAgents": [
+    {
+      "name": "Michael Dallal",
+      "email": "mike@dallalnewyork.com",
+      "phone": "516-673-7155",
+      "profileUrl": "https://dallal.realtymx.com/?page=agents&id=1",
+      "attributionSourceUrl": "https://streeteasy.com/building/118-mulberry-street-new_york/r4",
+      "emailSourceUrl": "https://dallal.realtymx.com/?page=agents&id=1",
+      "phoneSourceUrl": "https://dallal.realtymx.com/?page=agents&id=1"
+    },
+    {
+      "name": "Javier Cruz",
+      "email": "javier@dallalnewyork.com",
+      "phone": "(347) 654-8962",
+      "profileUrl": "https://dallal.realtymx.com/?page=agents&id=29",
+      "attributionSourceUrl": "https://streeteasy.com/building/118-mulberry-street-new_york/r4",
+      "emailSourceUrl": "https://dallal.realtymx.com/?page=agents&id=29",
+      "phoneSourceUrl": "https://dallal.realtymx.com/?page=agents&id=29"
+    }
+  ],
+  "issues": [
+    "No verified first-party listing found. Search-index attribution requires review."
+  ],
+  "method": "Live Firecrawl search and extraction with fresh local cache reuse; listing attribution from search index only. This summary omits raw page excerpts and local cache paths."
+}

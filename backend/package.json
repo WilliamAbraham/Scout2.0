@@ -12,9 +12,12 @@
     "inspect": "node scripts/inspect.ts",
     "survey": "node scripts/survey.ts",
     "probe": "node scripts/probe.ts",
+    "enrich": "node scripts/enrichListing.ts",
+    "test:enrichment": "node --test src/enrichment/*.test.ts",
+    "typecheck:enrichment": "tsc -p tsconfig.enrichment.json",
     "typecheck": "tsc",
     "extract": "node scripts/extract.ts",
-    "test": "node --test src/gmail/listings.test.ts"
+    "test": "node --test src/enrichment/*.test.ts"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
