@@ -347,10 +347,11 @@ that file is a planned deliverable, not an existing API. A owns the Drizzle
 migration; B reviews it. Both review contract changes before either depends
 on a new field or enum. Do not spend this session designing future subsystems.
 
-### Person A — listing intelligence and Gmail conversation
+### Person A — agentic pipeline
 
 **Owns:** ingestion, parsing, matching, brokerage discovery and verification,
-contact extraction, Gmail send/reply integration, and the polling worker.
+contact extraction, Google OAuth/token handling, Gmail send/reply integration,
+Calendar availability/booking, and the polling worker.
 
 Deliver in this order:
 
@@ -365,21 +366,25 @@ Deliver in this order:
    retry an uncertain send. A visible manual-review outcome is enough for the
    demo; a generalized distributed job system is unnecessary.
 4. Process one broker reply into a proposed slot, a response, or an escalation.
-   Invoke B's calendar functions when confirmation and availability permit.
-5. Replace cached ingestion with live polling after the persisted path works.
+5. Implement and invoke Calendar availability/booking when confirmation and
+   availability permit. Use explicit timezone, duration, and persisted event
+   identity; surface uncertain booking results rather than repeating the write.
+6. Replace cached ingestion with live polling after the persisted path works.
 
 **First handoff:** one real parsed listing in the agreed shape, followed by a
 pursuit with contact evidence and an outreach draft. Do not wait for a complete
 agent before handing data to B.
 
-A primarily edits `backend/`. A owns the worker's stage transitions and Gmail
-credentials/integration. Avoid broad brokerage coverage until one path works.
+A owns `backend/`, schema/migrations, worker stage transitions, and all Google
+integration logic and credentials. Expose the agreed data and command contract
+for B. Avoid broad brokerage coverage until one path works.
 
-### Person B — full-stack demo experience and calendar tools
+### Person B — dashboard
 
 **Owns:** the minimal profile screen, listings/pursuit dashboard, detail view,
-**Needs you** resolve flow, authenticated UI reads/commands, and Calendar
-availability/booking integration.
+**Needs you** resolve flow, connection-status UI, tour/calendar-event display,
+and authenticated dashboard reads/commands. B does not implement the agent or
+Google integrations.
 
 Deliver in this order:
 
@@ -391,22 +396,21 @@ Deliver in this order:
    expose service credentials or send Gmail directly from the browser.
 3. Make the missing-contact flow work end to end: supply a contact or close the
    pursuit. Include a pause control and surface failed/uncertain actions.
-4. Implement server-only `checkAvailability` and `bookTour` functions in an
-   agreed calendar module under `backend/`; A integrates calls from the worker.
-   Both agree arguments/results before implementation. Use explicit timezone,
-   duration, confirmation, and persisted event identity; surface uncertain
-   booking results instead of automatically repeating the write.
-5. Own frontend deployment, demo account setup, and the demo script. A owns the
-   worker startup/deployment. Test the actual deployed connection together.
+4. Display proposed and booked tours from A's persisted results, including time,
+   status, and event link when available. Show connection/reconnect prompts using
+   the integration flow A provides; do not handle Google tokens in the browser.
+5. Own frontend deployment and the demo script. A owns Google account integration
+   setup and worker startup/deployment. Test the deployed connection together.
 
-B primarily edits `frontend/` but also owns the agreed calendar module. This
-balances the work and avoids leaving all external integrations with A. Folder
-boundaries are a coordination aid, not a ban on full-stack work.
+B owns `frontend/`, including server-side dashboard authorization and command
+submission. A owns command execution and external side effects. Both agree the
+read/write contract; B can build against fixtures without waiting for the agent.
 
 ### Coordination rules
 
-- A owns schema/migrations and the worker; B owns UI/server commands and calendar
-  functions. Agree shared root configuration changes before editing them.
+- A owns schema/migrations, Google integrations, and the worker; B owns dashboard
+  screens and server-side command submission. Agree shared root configuration
+  changes before editing them.
 - Integrate as soon as the first persisted pursuit exists. Seeded screens must
   use the real contract, not a separate mock shape that needs a late rewrite.
 - Keep each deliverable on a small feature branch/PR. Merge usable increments;
@@ -425,10 +429,10 @@ integration, deployment, and rehearsing the demo.
 
 | Milestone | Person A | Person B | Together, verify |
 |---|---|---|---|
-| 0: contract | Minimal schema and seed data | Screens/commands and calendar interface | Both consume the same fixture shapes |
+| 0: contract | Minimal schema and seed data | Dashboard reads/commands and tour display shape | Both consume the same fixture shapes |
 | 1: alert to dashboard | Parse and match one cached alert | Profile and persisted pursuit view | A's actual row appears in B's UI |
 | 2: contact to outreach | Verified contact, draft, Gmail action | Contact evidence, outreach control, blocker resolution | One authorized email sends and the real result appears |
-| 3: reply to tour | Read reply and invoke calendar tools | Availability/booking functions and tour state | One controlled reply produces the expected action or escalation |
+| 3: reply to tour | Read reply, check availability, and book tour | Reply/escalation view and persisted tour state | One controlled reply produces the expected action or escalation |
 | 4: rehearsal | Live ingestion and worker startup | Deployment and demo narrative | Repeat the demo without duplicate sends; show a missing-contact case |
 
 **Minimum convincing demo:** alert → match → verified or explicitly supplied

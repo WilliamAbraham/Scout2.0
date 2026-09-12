@@ -61,7 +61,7 @@ The user clarified that this project is for a hackathon. Prioritize a demonstrab
 
 ## Two-person execution plan
 
-The design now assigns A ingestion/matching/enrichment, Gmail conversation, schema, and worker orchestration. B owns the full-stack dashboard, authorized UI commands, calendar functions, and demo presentation. First agree the contract and seed scenarios together; `docs/hackathon-contract.md` is a planned implementation deliverable, not yet created. Integrate on the first persisted pursuit and reserve the final quarter for rehearsal.
+The design now assigns A the entire agentic pipeline, including ingestion/matching/enrichment, Gmail, Calendar, Google credentials, schema, and worker orchestration. B owns the dashboard, authorized UI command submission, escalation/tour views, and demo presentation. A executes commands and external actions; B displays persisted results. First agree the contract and seed scenarios together; `docs/hackathon-contract.md` is a planned implementation deliverable, not yet created. Integrate on the first persisted pursuit and reserve the final quarter for rehearsal.
 
 ## Remaining decisions and next work
 
