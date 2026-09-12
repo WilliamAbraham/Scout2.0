@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-12
 **Status:** Design agreed, not yet implemented
-**Scope:** Whole-product design. Each subsystem below gets its own implementation plan.
+**Scope:** Whole-product vision, with the hackathon execution split and milestones in §§8–9. Those sections narrow the demo scope; the broader features below remain future product work.
 
 > This is an MVP. Designs favor the simplest thing that works. Subsystems are
 > deliberately shallow, and several known-imperfect behaviors are accepted.
@@ -309,46 +309,147 @@ Playwright stays, demoted to an enrichment fallback tier.
 
 ---
 
-## 8. Two-person split
+## 8. Two-person hackathon split
 
-The seam is the database. Agree the schema and the stage/`needs_human` enums
-together first; both tracks then run in parallel against it.
+**Demo goal:** one connected owner goes from a StreetEasy alert to a matched
+listing, verified broker contact, tour-request conversation, and, if time permits,
+a confirmed calendar event. Show a real **Needs you** case as well as the happy
+path. Multi-tenant onboarding, Apartments.com, roommates, application packets,
+and natural-language search are outside the hackathon critical path.
 
-### Person A — agent and pipeline (`backend/`)
+This is a recommended execution plan added for the hackathon. It does not claim
+that the whole-product functionality above is implemented. Assume both people
+can work in TypeScript; give Person A the stronger scraping/agent experience
+and Person B the stronger full-stack/product experience.
 
-Per-user Gmail OAuth and token storage, multi-source parsers, incremental sync,
-matching, contact enrichment, the outreach agent (thread handling, portal-link
-detection), calendar booking, packet sending. Writes listings, pursuit stages,
-and `needs_human` flags.
+### First 45–60 minutes — together
 
-**First task:** move OAuth tokens out of `token.json` into the database, per
-user. The current file-based single-user auth does not survive multi-tenancy and
-blocks everything else.
+Agree the smallest shared contract before coding independently:
 
-### Person B — product and dashboard (`frontend/`)
+- One restricted demo owner and the Google account used for the demo. Existing
+  local credentials may support a controlled local demo; hosted credentials
+  stay server-only. Public multi-user access is not part of this shortcut.
+- A profile with budget, beds, preferences, timezone, and tour windows.
+- Listing/pursuit records with listing facts, match explanation, contact evidence,
+  stage, blocker reason, thread reference, and optional calendar event reference.
+- Demo stages: `matched → ready_to_contact → contacted → tour_scheduled`, plus
+  `closed`. `needs_human` remains separate. Do not mark a tour as attended merely
+  because its scheduled time passed.
+- Commands: save profile, request outreach, resolve a blocker, and pause a pursuit.
+  Define their input/output shapes and allowed state transitions. The worker
+  owns action outcomes; the UI submits commands rather than pretending a send
+  or booking succeeded.
+- Three seed scenarios using the same shapes as live data: ready to contact,
+  missing contact, and tour scheduled. Record which are fixtures in the demo.
 
-Onboarding (connect Gmail and Calendar, build the search profile), listings
-feed, the **Needs you** queue and each resolve-flow, application tracker tab,
-document upload and storage, roommate invites, natural-language search.
+Write this contract in `docs/hackathon-contract.md` during implementation;
+that file is a planned deliverable, not an existing API. A owns the Drizzle
+migration; B reviews it. Both review contract changes before either depends
+on a new field or enum. Do not spend this session designing future subsystems.
 
-Person B can build the entire UI against seeded rows before the agent exists,
-and never touches the backend.
+### Person A — agentic pipeline
 
-**Coordination points:** the schema, and each new `needs_human` reason — every
-reason A can emit needs a matching resolve-flow from B.
+**Owns:** ingestion, parsing, matching, brokerage discovery and verification,
+contact extraction, Google OAuth/token handling, Gmail send/reply integration,
+Calendar availability/booking, and the polling worker.
+
+Deliver in this order:
+
+1. Use a cached StreetEasy alert to persist a listing and pursuit that B can
+   display. Start with deterministic budget/bed filters; add LLM preference
+   scoring only where useful.
+2. Prove the riskiest step early: find the correct current unit and a verified
+   contact on a representative brokerage page. Store the source and fall back
+   to `needs_human: no_contact` when evidence is insufficient.
+3. Generate a tour-request draft with recipients and persist it. Wire the
+   outreach command to Gmail, record the result/thread, and do not blindly
+   retry an uncertain send. A visible manual-review outcome is enough for the
+   demo; a generalized distributed job system is unnecessary.
+4. Process one broker reply into a proposed slot, a response, or an escalation.
+5. Implement and invoke Calendar availability/booking when confirmation and
+   availability permit. Use explicit timezone, duration, and persisted event
+   identity; surface uncertain booking results rather than repeating the write.
+6. Replace cached ingestion with live polling after the persisted path works.
+
+**First handoff:** one real parsed listing in the agreed shape, followed by a
+pursuit with contact evidence and an outreach draft. Do not wait for a complete
+agent before handing data to B.
+
+A owns `backend/`, schema/migrations, worker stage transitions, and all Google
+integration logic and credentials. Expose the agreed data and command contract
+for B. Avoid broad brokerage coverage until one path works.
+
+### Person B — dashboard
+
+**Owns:** the minimal profile screen, listings/pursuit dashboard, detail view,
+**Needs you** resolve flow, connection-status UI, tour/calendar-event display,
+and authenticated dashboard reads/commands. B does not implement the agent or
+Google integrations.
+
+Deliver in this order:
+
+1. Build the screens against the shared seed scenarios: listing facts, why it
+   matched, contact/source, email draft, current stage, and the next action.
+   Reuse the existing auth scaffold; custom multi-user onboarding can wait.
+2. Connect reads and commands to the shared database contract. Implement server
+   authorization for the demo owner. Persist commands for A's worker; never
+   expose service credentials or send Gmail directly from the browser.
+3. Make the missing-contact flow work end to end: supply a contact or close the
+   pursuit. Include a pause control and surface failed/uncertain actions.
+4. Display proposed and booked tours from A's persisted results, including time,
+   status, and event link when available. Show connection/reconnect prompts using
+   the integration flow A provides; do not handle Google tokens in the browser.
+5. Own frontend deployment and the demo script. A owns Google account integration
+   setup and worker startup/deployment. Test the deployed connection together.
+
+B owns `frontend/`, including server-side dashboard authorization and command
+submission. A owns command execution and external side effects. Both agree the
+read/write contract; B can build against fixtures without waiting for the agent.
+
+### Coordination rules
+
+- A owns schema/migrations, Google integrations, and the worker; B owns dashboard
+  screens and server-side command submission. Agree shared root configuration
+  changes before editing them.
+- Integrate as soon as the first persisted pursuit exists. Seeded screens must
+  use the real contract, not a separate mock shape that needs a late rewrite.
+- Keep each deliverable on a small feature branch/PR. Merge usable increments;
+  do not leave two giant branches until the final hour.
+- No new feature until the current milestone runs through both tracks. If A is
+  blocked on scraping, use the explicit manual-contact resolve flow; if Calendar
+  is unfinished, show a confirmed proposed tour without claiming it was booked.
 
 ---
 
-## 9. Build order
+## 9. Hackathon build order and cut line
 
-1. Schema and enums — both people, first
-2. Multi-user Gmail OAuth and ingestion (A) / onboarding and search profile (B)
-3. Matching (A) / listings feed (B)
-4. Contact enrichment (A) / **Needs you** queue (B)
-5. Outreach agent (A) / application tracker (B)
-6. Calendar and tours (A) / documents (B)
-7. Application packets (A) / natural-language search (B)
-8. Roommates (B)
+Use milestones rather than fixed days because the hackathon duration is not
+specified. Reserve roughly the final quarter of the available time for
+integration, deployment, and rehearsing the demo.
+
+| Milestone | Person A | Person B | Together, verify |
+|---|---|---|---|
+| 0: contract | Minimal schema and seed data | Dashboard reads/commands and tour display shape | Both consume the same fixture shapes |
+| 1: alert to dashboard | Parse and match one cached alert | Profile and persisted pursuit view | A's actual row appears in B's UI |
+| 2: contact to outreach | Verified contact, draft, Gmail action | Contact evidence, outreach control, blocker resolution | One authorized email sends and the real result appears |
+| 3: reply to tour | Read reply, check availability, and book tour | Reply/escalation view and persisted tour state | One controlled reply produces the expected action or escalation |
+| 4: rehearsal | Live ingestion and worker startup | Deployment and demo narrative | Repeat the demo without duplicate sends; show a missing-contact case |
+
+**Minimum convincing demo:** alert → match → verified or explicitly supplied
+contact → one tour email → visible reply/state update. Calendar booking is the
+first extension. A fixture replay is a legitimate backup when clearly labelled;
+it must not masquerade as live broker activity.
+
+**Cut first if behind:** visual polish beyond readability, additional brokerage
+coverage, rich onboarding, and automatic follow-ups. Do not add Apartments.com,
+roommates, natural-language search, or sensitive application sending before this
+path works. Do not spend the remaining time implementing production-wide
+multi-tenancy or a general retry framework for features the demo does not use.
+
+**Demo correctness checks:** correct apartment/unit and recipient, owner-only
+access, no blind retry of an uncertain send/booking, and dashboard stages backed
+by recorded outcomes. Use a controlled recipient for rehearsals; a live broker
+response is not a dependable dependency for the presentation.
 
 ---
 
