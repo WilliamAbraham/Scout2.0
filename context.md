@@ -20,7 +20,9 @@ Next for A: real `sendMail` via Gmail (needs the `gmail.send` scope and re-conse
 
 On 2026-09-12, an approved $0.10 test processed all four listings from a different StreetEasy recommendation email with GPT-4.1 Mini / Parallel fast and a fresh local cache. Actual API-reported spend was $0.020800404 total (0.52¢ per listing), over eight stage requests and approximately 45 seconds. No named brokers were found; three listings returned generic company contact channels and one returned no contact details. This is a cost measurement, not successful listing-agent enrichment. See the [benchmark report](docs/enrichment/mini-cost-benchmark-2026-09-12.md).
 
-The prompt now matches the two-search allowance and available search-only tool. `yarn test` passes all 123 tests and the enrichment TypeScript check passes. `yarn lint` was attempted but the root lint script is still absent. The older review and integration snapshots below retain their historical status; these latest test results supersede old missing-test claims. Raw email and API artifacts remain in ignored `data/` directories.
+The subsequent 620 East 6th Street #9A test cost $0.006410748 and missed Fatma Kara, visible in the user's listing screenshot. The OpenRouter agent now preserves optional listing URLs, attempts a bounded direct HTML read, and enforces one budgeted discovery recovery stage when no supported broker is found. Available source text must support the broker name, address and unit. The Gmail input adapter forwards the URL; the outreach runner still uses its existing BrokerEnrichment service, not this agent. See [retrieval behavior and limitations](docs/enrichment/openrouter-agent.md#retrieval-upgrade-2026-09-12).
+
+The upgrade passes all 135 offline tests and the enrichment TypeScript check. `yarn lint` was attempted but the root lint script is still absent. No paid test of the upgraded agent has run, so neither live recovery of Fatma Kara nor the new cost per listing is verified. Earlier 0.52¢/listing figures describe the old two-stage configuration. Raw email and API artifacts remain in ignored `data/` directories.
 
 ## Latest upstream integration
 
@@ -60,7 +62,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run lint -w frontend` | Frontend ESLint; no backend lint script |
 | `npm run build -w frontend` | Frontend production build |
 | `yarn lint` | Required convention; currently fails because root script is absent |
-| `yarn test` | Required convention; passes 123 tests as of the latest enrichment cost test |
+| `yarn test` | Required convention; passes 135 tests after the retrieval upgrade |
 | `npm run sync` | Gmail message corpus discovery/cache workflow |
 | `npm run inspect -- <messageId>` | Inspect cached/raw mail; output can contain personal information |
 | `npm run survey -- --offline` | Cached corpus survey |

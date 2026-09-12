@@ -6,6 +6,7 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 
 - [Project](project.md): intended experience, architecture, scope, and work division.
 - [Engineering context](context.md): current implementation, setup, commands, check failures, and next work.
+- [Enrichment retrieval upgrade](docs/enrichment/openrouter-agent.md#retrieval-upgrade-2026-09-12): preserves listing URLs, reads broker sections, and adds one budgeted recovery stage; live recall remains unverified.
 - [Enrichment cost benchmark](docs/enrichment/mini-cost-benchmark-2026-09-12.md): four new listings cost 2.08¢ total; named-broker discovery remains unresolved.
 - [Design review](docs/reviews/2026-09-12-product-design-review.md): prioritized findings and acceptance checks.
 - [Product design](docs/superpowers/specs/2026-09-12-scout-product-design.md): product proposal and two-person hackathon plan.
@@ -35,4 +36,4 @@ npm run dev:web
 npm run dev:api
 ```
 
-The intended ports are 3000 for the frontend and 4000 for the backend. Root `yarn lint` currently has no script. `yarn test` passed all 123 tests during the latest enrichment cost benchmark; the enrichment TypeScript check also passed.
+The intended ports are 3000 for the frontend and 4000 for the backend. Root `yarn lint` currently has no script. `yarn test` passed all 135 tests after the retrieval upgrade (Node 22 requires `NODE_OPTIONS=--experimental-strip-types`); the enrichment TypeScript check also passed.
