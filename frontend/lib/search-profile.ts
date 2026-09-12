@@ -1,3 +1,5 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 // Mirrors backend/src/db/schema/profiles.ts and gmail.ts without importing
 // across workspace ownership boundaries. Only editable criteria are included.
 export type AvailabilityWindow = { day: number; start: string; end: string };
@@ -91,6 +93,18 @@ const numericFields = {
   bedrooms_max: { label: "Maximum bedrooms", max: 999.9, scale: 10 },
   bathrooms_min: { label: "Minimum bathrooms", max: 999.9, scale: 10 },
 } as const;
+export function splitPreferenceList(raw: string): string[] {
+  const seen = new Set<string>();
+  return raw
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => {
+      const key = item.toLocaleLowerCase("en-US");
+      if (!item || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
 // Malformed input is rejected rather than silently becoming null/an empty list.
 export function parseSearchProfile(form: FormData): ProfileValidation {
   const invalid = (field: string, error: string): ProfileValidation => ({
@@ -157,10 +171,7 @@ export function parseSearchProfile(form: FormData): ProfileValidation {
         key,
         "A preference field is missing. Refresh and try again.",
       );
-    lists[key] = raw
-      .split(",")
-      .map((item) => item.trim())
-      .filter(Boolean);
+    lists[key] = splitPreferenceList(raw);
   }
   const preferences = form.get("preferences");
   if (typeof preferences !== "string")
@@ -224,4 +235,44 @@ export function parseSearchProfile(form: FormData): ProfileValidation {
     error: null,
     field: null,
   };
+}
+
+export const profileSaveFailed: ProfileActionState = {
+  error:
+    "Your save could not be confirmed. Your edits are still here; please try again.",
+  field: null,
+  savedAt: null,
+};
+
+export async function executeProfileSave(
+  supabase: SupabaseClient,
+  form: FormData,
+): Promise<ProfileActionState> {
+  try {
+    const { data, error: authError } = await supabase.auth.getClaims();
+    const userId = data?.claims?.sub;
+    if (authError || typeof userId !== "string" || !userId)
+      return {
+        error: "Sign in to save your search preferences.",
+        field: null,
+        savedAt: null,
+      };
+    const parsed = parseSearchProfile(form);
+    if (parsed.error !== null)
+      return { error: parsed.error, field: parsed.field, savedAt: null };
+    const savedAt = new Date().toISOString();
+    // Only editable criteria. Agent answers, pause and send caps are preserved.
+    const { data: saved, error } = await supabase
+      .from("search_profiles")
+      .upsert(
+        { user_id: userId, ...parsed.profile, updated_at: savedAt },
+        { onConflict: "user_id" },
+      )
+      .select("user_id")
+      .maybeSingle();
+    if (error || saved?.user_id !== userId) return profileSaveFailed;
+    return { error: null, field: null, savedAt };
+  } catch {
+    return profileSaveFailed;
+  }
 }
