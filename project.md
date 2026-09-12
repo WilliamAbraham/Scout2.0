@@ -51,6 +51,8 @@ Listings must retain source identity, while pursuits and inbox observations belo
 
 ## Contact enrichment direction
 
+Retrieval upgrade (2026-09-12): the optional OpenRouter agent consumes preserved listing URLs, reads their broker section before search, and runs one budgeted alternate discovery stage if no supported broker is found. Offline coverage includes the Fatma Kara layout, wrong-city results, co-broker retention, and spending limits; all 135 tests pass. Live retrieval quality and the revised cost remain unmeasured. The alert/outreach runner's enrichment provider has not been switched. See [implementation and limits](docs/enrichment/openrouter-agent.md#retrieval-upgrade-2026-09-12).
+
 Current measured status (2026-09-12): the optional GPT-4.1 Mini / OpenRouter path processed four new listings for 2.08¢ total, but returned no named brokers and only three generic company contact channels. It does not yet meet the listing-agent enrichment goal. The [live cost report](docs/enrichment/mini-cost-benchmark-2026-09-12.md) separates API execution from contact quality; lower spend alone is not a release criterion.
 
 Use generic fetch and extraction, with Playwright only when rendering is required. Do not scrape StreetEasy rental pages; resolve the canonical URL from the alert's redirect headers. Preserve verified brokerage identity and office address, especially for similarly named firms.

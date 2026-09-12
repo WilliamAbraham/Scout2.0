@@ -7,6 +7,7 @@ export function gmailListingToEmailInput(listing: GmailListing): EmailListing {
   const {brokerageName, officeAddress} = splitBrokerage(listing.brokerage);
   return parseEmailListing({
     address: listing.address,
+    listingUrl: listing.listingUrl,
     price: listing.price,
     bedrooms: listing.bedrooms,
     bathrooms: listing.bathrooms,

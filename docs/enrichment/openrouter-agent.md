@@ -2,6 +2,18 @@
 
 The `enrich:agent` command now defaults to GPT-4.1 Mini through the official OpenAI JavaScript SDK and OpenRouter. It requires an explicit dollar budget before making paid requests. A subsequently approved [four-listing live test](mini-cost-benchmark-2026-09-12.md) cost $0.020800404 total, but found no named brokers and only three generic brokerage contact channels. Lower cost is measured; adequate enrichment quality is not established. The earlier $4.21 benchmark used a different email and configuration.
 
+## Retrieval upgrade (2026-09-12)
+
+The agent now accepts an optional `listingUrl`. The Gmail-to-enrichment adapter preserves it instead of dropping it. The input parser accepts canonical HTTPS StreetEasy rental or exact-unit building URLs and removes query parameters and fragments. The live alert/outreach runner still uses `BrokerEnrichment`, not this optional OpenRouter agent; this change does not switch providers or enable outreach.
+
+Before paid discovery, a supplied URL is read over HTTP. The reader checks every redirect against the StreetEasy listing allowlist, bounds the entire read to ten seconds and 2 MB, removes executable markup, and retains the page heading plus up to 5,200 characters around “Listed by.” This targets broker names even after a long description. The read uses no model/search credits. HTTP errors, challenge pages and missing content are recorded before search fallback; there is no CAPTCHA bypass or browser rendering. JavaScript-only or inaccessible pages remain a limitation.
+
+Discovery receives that source text when available and includes New York in address searches. If no supported broker is found, code enforces **one alternate discovery request** before looking up generic office contacts. This request uses the same dollar ledger, model and two-search maximum as the other stages. There are now up to three paid stages: discovery, discovery recovery, contacts. Recovery does not repeat indefinitely, and budget refusal keeps execution partial. Explicit Owner listings can skip recovery. When citation text is available, it must contain the broker name, matching address and unit; a wrong-city citation cannot establish attribution. Candidates remain available for review, and a later supported match upgrades the same candidate without duplicating it.
+
+For JSON callers, add `"listingUrl": "https://streeteasy.com/rental/<actual-rental-id>"` using the URL from the email. Do not seed expected broker names. `discovery_retry` transcripts are saved separately. Cache policy was bumped so older search-only results are not reused.
+
+The preceding single-listing test of **620 East 6th Street #9A** cost **$0.006410748** and missed Fatma Kara, who is visible in the user's subsequent screenshot. New offline fixtures cover this layout and recovery behavior, but deliberately supplied fixture responses are **not proof of independent live discovery**. This upgrade has not been run against OpenRouter yet; its actual cost and live broker recall are unmeasured. The old 0.52¢ average must not be presented as the upgraded pipeline's measured rate.
+
 ## Usage
 
 ```sh
@@ -32,9 +44,9 @@ Set `OPENROUTER_API_KEY` in the root `.env` or environment for paid research. No
 | Provider price filter | None | At most $0.40/M input, $1.60/M output; provider fallbacks disabled |
 | Result reuse | None | Full-input cache and concurrent duplicate suppression |
 
-Exact address/unit discovery still runs before personal contact lookup. A generic office contact cannot terminate broker-name discovery. Missing email/phone, provider failure, or insufficient budget retains the discovered names.
+Exact address/unit discovery and, when needed, one recovery stage run before personal contact lookup. A generic office contact cannot terminate broker-name discovery. Missing email/phone, provider failure, or insufficient budget retains the discovered names.
 
-Existing direct brokerage adapters run first when a cache directory is configured (the CLI configures one). Their verified contacts are returned separately in `directContacts`, including exact-listing, unit-conflict, or brokerage-only relationships. If discovery finds no named people and a direct contact is available, the paid generic contact stage is skipped. This recovers sources such as Canvas's public listing feed without asking the model to rediscover that feed. Direct HTTP reads use no model or search credits; they can still fail or require review.
+Existing direct brokerage adapters run first when a cache directory is configured (the CLI configures one). Their verified contacts are returned separately in `directContacts`, including exact-listing, unit-conflict, or brokerage-only relationships. If discovery and recovery find no named people and a direct contact is available, the paid generic contact stage is skipped. This recovers sources such as Canvas's public listing feed without asking the model to rediscover that feed. Direct HTTP reads use no model or search credits; they can still fail or require review.
 
 ## Budget semantics
 
@@ -52,7 +64,7 @@ Direct source pages retain their existing one-hour cache. Failed/partial result 
 
 Model contacts require valid format, a supporting excerpt, and a matching provider citation. Multiple excerpts for a URL are accumulated; a later masked page cannot erase earlier email evidence. A masked model email excerpt can be replaced only by actual cited provider text containing that email. No email patterns are guessed. Generic office channels remain separate from individual broker contacts.
 
-`source_cited` means matching model-reported address/unit plus a citation URL, not independent proof that the roster is complete or current. Unit conflicts remain review candidates. The previous search-only version missed Jake Vitale for 423 West #1C; this optimization does not claim to have fixed that retrieval gap.
+`source_cited` requires matching model-reported address/unit and a citation URL, plus the name/address/unit in citation text when text is available. Directly fetched listing text is retained as source evidence too. This is not independent proof that the roster is complete or current; excerpt-only or historical sources need review. Unit conflicts remain review candidates. The previous search-only version missed Jake Vitale for 423 West #1C; live recovery of that co-agent remains unverified.
 
 ## Optional screenshot
 
@@ -60,7 +72,7 @@ Model contacts require valid format, a supporting excerpt, and a matching provid
 
 ## Verification
 
-98 enrichment tests and the isolated TypeScript check passed during optimization. The full `yarn test` suite subsequently passed 123 tests during the live benchmark task; root `yarn lint` remains unavailable because no script exists. Tests use mocked HTTP with the real OpenAI SDK and cover zero-budget rejection, shared batch spending, unknown charges, overruns, model/price/search restrictions, cache hits, expiry, changed units, concurrent duplicates, direct contact reuse, and roster preservation. The approved live test measured cost but exposed insufficient broker discovery. Further paid experiments need an agreed budget.
+The retrieval upgrade passes 135 tests in the full `yarn test` suite (with Node 22 type stripping enabled) and the isolated enrichment TypeScript check; root `yarn lint` remains unavailable because no script exists. Tests use mocked HTTP with the real OpenAI SDK and cover zero-budget rejection, shared batch spending, unknown charges, overruns, model/price/search restrictions, cache hits, expiry, changed units, concurrent duplicates, direct contact reuse, and roster preservation. The approved live test measured cost but exposed insufficient broker discovery. New retrieval tests additionally cover URL propagation and sanitization, blocked/oversized/redirected pages, broker sections after long descriptions, irrelevant source rejection, bounded discovery recovery, candidate upgrades, and budget refusal. Further paid experiments need an agreed budget.
 
 - [OpenRouter GPT-4.1 Mini pricing](https://openrouter.ai/openai/gpt-4.1-mini): $0.40/M input and $1.60/M output when checked September 12, 2026.
 - [Provider price filters](https://openrouter.ai/docs/guides/routing/provider-selection#max-price)

@@ -17,7 +17,7 @@ function mock(cost: number | undefined = 0.001) {
   const requests: Record<string, unknown>[] = [];
   const options: AgentOptions = {apiKey: 'offline', budget: new EnrichmentBudget(0.2), fetch: async (_url, init) => {
     const body = JSON.parse(String(init?.body)); requests.push(body);
-    const data = body.response_format.json_schema.name === 'broker_discovery' ? roster : contacts;
+    const data = body.response_format.json_schema.name !== 'broker_contacts' ? roster : contacts;
     return Response.json({id: 'offline', choices: [{finish_reason: 'stop', message: {content: JSON.stringify(data),
       annotations: [{type: 'url_citation', url_citation: {url, content: '10 Test Street #1 Listed by Test Broker'}}]}}],
       usage: {prompt_tokens: 100, completion_tokens: 100, ...(cost === undefined ? {} : {cost})}});
@@ -127,7 +127,7 @@ test('direct Next Step office contacts skip paid contact stage without suppressi
     return Response.json(raw);
   };
   const result = await enrichWithAgent({...input, brokerage: 'Next Step Realty New York LLC'}, options);
-  assert.equal(requests.length, 1, 'discovery still runs but generic contact research is skipped');
+  assert.equal(requests.length, 2, 'both discovery attempts run but generic contact research is skipped');
   assert.equal(result.directContacts[0]?.email, 'clients@nextstepny.com');
   assert.equal(result.agents.length, 0);
   assert.equal(result.execution, 'completed');
