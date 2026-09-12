@@ -2,6 +2,12 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Latest profile-design integration — 2026-09-12
+
+Merged upstream `ce8c8df` into `codex/implement-pursuit-inbox`. The incoming change is documentation only: it replaces the five-step onboarding plan with a writable Search preferences panel. It adds no endpoint or schema migration. The existing public preview and authenticated dashboard remain the integration surfaces. Move-in/timezone columns and Google OAuth entry point are still owned by the backend and absent. Frontend panel integration follows in this task.
+
+Baseline before the merge: 72 backend and 8 frontend tests passed; root `yarn lint` remains unavailable.
+
 ## Current inbox implementation — 2026-09-12
 
 Implemented the user-approved direction from the [inbox/process review](docs/reviews/2026-09-12-inbox-process-review.md) on `codex/implement-pursuit-inbox`.
