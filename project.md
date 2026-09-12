@@ -51,6 +51,8 @@ Listings must retain source identity, while pursuits and inbox observations belo
 
 ## Contact enrichment direction
 
+Verified broker discovery (2026-09-12): the OpenRouter agent independently finds **Fatma Kara at FIND Real Estate for 620 East 6th Street #9A**, using the original listing fields without a seeded name or URL. It generates one candidate URL, validates the live page heading/rent, then extracts its broker section. The fresh run cost **0.34¢** in 7.9 seconds. Offline auditing rejects the conflicting-brokerage email returned by contact search; personal contacts remain unverified. All 154 tests pass. The worker provider is unchanged, and general recall is not established. See the [live report](docs/enrichment/fatma-live-result-2026-09-12.md).
+
 Current measured status (2026-09-12): the optional GPT-4.1 Mini / OpenRouter path processed four new listings for 2.08¢ total, but returned no named brokers and only three generic company contact channels. It does not yet meet the listing-agent enrichment goal. The [live cost report](docs/enrichment/mini-cost-benchmark-2026-09-12.md) separates API execution from contact quality; lower spend alone is not a release criterion.
 
 Use generic fetch and extraction, with Playwright only when rendering is required. Do not scrape StreetEasy rental pages; resolve the canonical URL from the alert's redirect headers. Preserve verified brokerage identity and office address, especially for similarly named firms.

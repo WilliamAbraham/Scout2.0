@@ -97,6 +97,7 @@ test('isStreetEasyAlert matches the alert sender', () => {
 
 test('gmail listing converts to enrichment input with split brokerage', () => {
   const input = gmailListingToEmailInput(listing);
+  assert.equal(input.listingUrl, listing.listingUrl);
   assert.equal(input.brokerage, 'DALLAL');
   assert.equal(input.unit, 'R4');
   assert.equal(input.brokerageOfficeAddress, '260 Madison Avenue, New York, NY 10016');

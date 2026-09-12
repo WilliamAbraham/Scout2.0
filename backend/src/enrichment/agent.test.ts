@@ -16,12 +16,13 @@ const contacts = {agents: [{id: 'agent-1', email: contact, phone: null, notes: [
 function response(data: unknown, citations = [url], finishReason = 'stop'): Response {
   return Response.json({id: 'mock-response', object: 'chat.completion', created: 1, model: 'mock',
     choices: [{index: 0, finish_reason: finishReason, message: {role: 'assistant', content: JSON.stringify(data),
-      annotations: citations.map(url => ({type: 'url_citation', url_citation: {url, title: 'Listing'}}))}}],
+      annotations: citations.map(url => ({type: 'url_citation', url_citation: {url, title: 'Listing', content: `${attribution.excerpt} ${data === contacts ? 'Alice Broker: alice@example.com' : ''}`} }))}}],
     usage: {prompt_tokens: 1, completion_tokens: 1, total_tokens: 2, cost: 0.001}});
 }
 function mock(responses: Response[], inspect?: (body: Record<string, unknown>, call: number) => void): AgentOptions {
   let calls = 0;
   return {apiKey: 'test-only', budget: new EnrichmentBudget(0.1), fetch: async (request, init) => {
+    if (String(request).startsWith('https://streeteasy.com/')) return new Response(null, {status: 403});
     assert.equal(String(request), 'https://openrouter.ai/api/v1/chat/completions');
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     inspect?.(body, calls);
@@ -65,7 +66,7 @@ test('unrecognized agent IDs cannot add a person and uncited contacts are droppe
     agents: [...contacts.agents, {id: 'invented', email: contact, phone: null, notes: []}]}, [])]));
   assert.equal(result.agents.length, 2);
   assert.equal(result.agents[0]?.email, null);
-  assert.match(result.notes.join(' '), /unknown contact-stage ID/);
+  assert.match(result.notes.join(' '), /unknown or unsupported contact-stage ID/);
 });
 
 test('reversed unit is a review candidate; attribution without provider citation also requires review', async () => {
