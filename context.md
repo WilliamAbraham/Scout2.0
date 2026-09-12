@@ -41,6 +41,8 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 
 Root `.env` supplies backend `DATABASE_URL`; `frontend/.env.local` supplies the two public Supabase variables documented in `frontend/.env.example`. Credentials, OAuth tokens, env files, and `data/` are ignored. Do not commit or print secrets or cached private mail.
 
+Local setup on 2026-09-12: the user-provided Supabase settings are configured in those ignored environment files. Environment parsing and required values were checked; live authentication and database connectivity remain unverified. Teammates must configure their own local copies; credentials are not included in Git.
+
 The initial Drizzle migration and metadata are tracked, but `.gitignore` also ignores `backend/drizzle/`. Future migrations can therefore be omitted accidentally; resolve this before schema implementation.
 
 Preserve strict compiler flags. Frontend uses Tailwind v3. Follow the generated guidance in `frontend/AGENTS.md` before frontend code changes; this documentation task leaves that file intact.
