@@ -219,23 +219,61 @@ templated builds that render server-side, so `fetch` + cheerio gets the HTML.
 Playwright costs ~300MB of RAM per browser and seconds per launch. Use it only
 when a plain fetch returns a shell with no content.
 
-**Cache contacts per brokerage, not per listing.** 280 listings collapse to 60
-lookups, and a property manager's single leasing address covers many listings.
+**Cache the brokerage, not the agents.** The brokerage's website, general
+leasing address, and email pattern are stable and reused — 280 listings collapse
+to 60 such lookups. The *set of agents* is per listing and is not cacheable.
 
 **Use the office address.** 84% of listings carry the brokerage's office address
 in parentheses — `REAL New York (29 West 30th Street, ...)`. It disambiguates
 similarly-named firms and helps identify the right website.
 
+### Extract every agent on the listing
+
+Capture **all** agents the source explicitly attaches to the listing, not just
+the first one. NYC rentals are frequently co-listed, and reaching only one agent
+of a pair is how a thread goes unanswered.
+
+Rules, carried over from the original `names.ts` plan:
+
+- Capture every name with its profile URL, preserving the order on the page.
+- Deduplicate on profile URL first, then on normalized name within the listing.
+- Record primary/secondary **only** where the source explicitly labels it;
+  otherwise role is unspecified. First on the page does not mean primary.
+- Exclude navigation, "suggested agents", unrelated team members, and generic
+  inquiry contacts that carry no listing attribution.
+- Preserve team or company labels separately. Never invent a personal name.
+
 ### Tiered resolution
 
-The specific listing agent is a quality optimization, not a requirement:
-
-1. Specific agent, from the brokerage's own listing page
+1. **All agents** attached to the listing on the brokerage's own listing page
 2. The brokerage's general leasing address
 3. `needs_human: no_contact`
 
-Tier 2 nearly always resolves and requires no listing-level matching at all.
-Start there; treat Tier 1 as an improvement.
+Tier 2 requires no listing-level matching at all and nearly always resolves, so
+it is the floor the agent can always fall back to.
+
+### One listing, one thread
+
+A pursuit sends **one email addressed to every resolved agent** — primary in
+`To`, co-agents in `Cc` — not one email per agent.
+
+This is not a stylistic choice. The entire pipeline joins inbound replies to
+state on the Gmail `thread_id` (§5). Separate emails would create separate
+threads for one apartment, splitting a single pursuit across several
+conversations that the agent would then handle as if they were unrelated. It
+also avoids three near-identical emails about one apartment landing on a
+co-listing team, which is what makes a sender look automated.
+
+Any agent's reply lands in the same thread and advances the same pursuit.
+
+### Shape
+
+Two tables, reflecting the different lifetimes:
+
+- `brokerages` — name, office address, website, general leasing email. Cached
+  and reused across listings.
+- `listing_agents` — per listing: name, email, phone, profile URL, source order,
+  and role only where explicitly labeled.
 
 ### Ambiguous cases observed in real data
 
