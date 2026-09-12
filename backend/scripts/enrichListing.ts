@@ -8,13 +8,14 @@ try {process.loadEnvFile(path.join(REPO_ROOT, '.env'));} catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
 }
 const args = process.argv.slice(2);
-const usage = 'Usage: npm run enrich -- <input.json> [--refresh] [--no-index-fallback] [--max-calls N] [--output path]';
+const usage = 'Usage: npm run enrich -- <input.json> [--refresh] [--direct-only] [--no-index-fallback] [--max-calls N] [--output path]';
 if (args.includes('--help')) {console.log(usage); process.exit(0);}
 let inputPath: string | undefined, outputPath: string | undefined;
-let refresh = false, indexedFallback = true, maxCalls = 32;
+let refresh = false, indexedFallback = true, directOnly = false, maxCalls = 32;
 for (let i = 0; i < args.length; i++) {
   const arg = args[i]!;
   if (arg === '--refresh') refresh = true;
+  else if (arg === '--direct-only') directOnly = true;
   else if (arg === '--no-index-fallback') indexedFallback = false;
   else if (arg === '--max-calls' || arg === '--output') {
     const value = args[++i];
@@ -31,12 +32,12 @@ if (!inputPath) throw new Error(usage);
 const input = parseEmailListing(JSON.parse(await readFile(inputPath, 'utf8')));
 const outputDir = path.join(DATA_DIR, 'enrichment');
 const enrichment = new BrokerEnrichment({
-  cacheDir: path.join(outputDir, 'cache'), refresh, indexedFallback, maxCalls,
+  cacheDir: path.join(outputDir, 'cache'), refresh, indexedFallback, maxCalls, directOnly,
   ...(process.env.TAVILY_API_KEY ? {tavilyKey: process.env.TAVILY_API_KEY} : {}),
   ...(process.env.FIRECRAWL_API_KEY ? {firecrawlKey: process.env.FIRECRAWL_API_KEY} : {}),
   log: message => console.error(message),
 });
-console.error(`Search provider: ${enrichment.searchProvider}. Reader/extractor: Firecrawl.`);
+console.error(`Readers: direct brokerage adapters${directOnly ? ' only' : `, then ${enrichment.searchProvider} search and Firecrawl extraction`}.`);
 const result = await enrichment.run(input);
 if (result.status === 'error' || result.execution !== 'completed') process.exitCode = 1;
 const output = outputPath ?? path.join(outputDir, 'results', `${path.basename(inputPath, '.json')}.result.json`);

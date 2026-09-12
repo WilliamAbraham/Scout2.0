@@ -21,6 +21,7 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+.cursor/worktrees/
 
 # Next.js
 .next/
