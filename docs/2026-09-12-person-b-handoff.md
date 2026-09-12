@@ -4,6 +4,16 @@ Written 2026-09-12 from a read of `main` (A's pipeline, through `bbc3abf`) and `
 
 Roles are as in the design spec §8: A owns `backend/`, schema/migrations, Google integrations, and the worker. B owns `frontend/`, server-side dashboard authorization, and command submission.
 
+## B implementation update — 2026-09-12
+
+The handoff below is the original assessment. B's current implementation is on `codex/more-enrichment-on-frontend` and is recorded in [the implemented contract](hackathon-contract.md).
+
+- Main/schema integration is complete. Server actions now support owner-authorized contact supply, close pursuit and profile pause/resume with stale-state and failed-write handling. Contact supply uses the address directly for a future worker cycle; no verification step or separate request-outreach flag exists.
+- Conversation renders stored draft recipients, subject and body as **Draft · Not sent**. The reader handles event payloads, user-supplied contact evidence, follow-up metadata and valid `{start,end}` tour events without inventing location or calendar confirmation.
+- All blocker reasons have explicit UI states. Only no-contact resolution has a worker-compatible write path; the other five remain labeled placeholders. Availability changes do not clear a blocked pursuit.
+- Live controls refresh server records and retain pending/error/success feedback. The original proposal to infer a Gmail connection from missing metadata was rejected: the UI reports status as unavailable/not reported.
+- The [demo and deployment runbook](demo-runbook.md) is prepared. Owner login, successful real-row mutation/RLS verification and an actual hosting deployment remain pending. The browser is still signed out; no credential or session was manufactured. A must also scope the shared-mailbox worker to its owner before multi-user deployment, and guard in-flight writes before dependable cancellation.
+
 ## 1. Where A's pipeline is
 
 The worker runs end to end against Postgres in one cycle: Gmail alert sync → `listings` / `user_listings` upsert → deterministic budget/bedroom match against `search_profiles` → `pursuits` row → broker enrichment → `contact_snapshot` or `needs_human = no_contact` → outreach draft.

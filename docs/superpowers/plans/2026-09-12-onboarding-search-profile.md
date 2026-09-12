@@ -1,5 +1,15 @@
 # Search Profile Implementation Plan
 
+**Implementation update (2026-09-12):** Integrated on
+`codex/implement-pursuit-inbox`, retaining both existing routes. The actual
+implementation uses `lib/search-profile.ts`, `lib/profile-server.ts`,
+`app/actions/profile.ts` and a separate `SearchPreferencesForm`. The examples
+below remain the original plan, not a record of completed live verification.
+The implementation separates authentication from a missing profile, blocks
+editing after read failure and rejects malformed values. See
+[current engineering context](../../../context.md) for verified checks and
+remaining backend work.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the dashboard's read-only **Search preferences** panel writable,
