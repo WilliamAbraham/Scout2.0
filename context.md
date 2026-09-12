@@ -2,6 +2,12 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Final upstream reconciliation — 2026-09-12
+
+Integrated `origin/main` at `0a888a6` into `codex/more-enrichment-on-frontend` for [PR #9](https://github.com/WilliamAbraham/Scout2.0/pull/9). README/context conflicts preserve the implemented frontend contract alongside the new backend assignments and broker-discovery evidence. Incoming enrichment changes add no pursuit/profile schema or command changes; the worker still uses its existing provider and refuses live sending.
+
+Verified on the combined tree: all **183 tests passed** (154 backend, 29 frontend), both workspace typechecks and the frontend production build passed, and `git diff --check` passed. Targeted frontend ESLint passed before this merge; no frontend source changed in it. Root `yarn lint` remains unavailable because its script is absent. Earlier counts below describe their respective snapshots. Owner login, real-row/RLS checks and hosting deployment remain pending; no live worker, mailbox, migration or paid enrichment command ran during this integration.
+
 ## Listing information enrichment — 2026-09-12
 
 Implemented on `codex/more-enrichment-on-frontend`, with shared dashboard wiring in `52f7182` and listing components/tests in `e709720`.
@@ -19,7 +25,7 @@ B's handoff implementation is on `codex/more-enrichment-on-frontend`. The [dashb
 - Server actions implement user-authorized contact supply, close pursuit and pause/resume. Every command verifies the session/owner, compares current state/version, requires a returned row and reports uncertain writes. Contact supply clears the blocker without advancing stage or claiming a send. It is eligible on a future cycle, with no later verification step. The other five blocker types have explicit placeholders; availability edits do not clear a current blocker.
 - The reader now selects event payloads, thread/enrichment and follow-up fields. Valid drafts render separately from sent emails; malformed draft records suppress false readiness. Tours require ordered offset timestamps and retain unknown location/calendar confirmation. Contact evidence and user-supplied provenance are displayed. Missing Gmail metadata is “status not reported,” not proof of disconnection.
 - Live data uses refreshed server props; pending state is shared across controls, and mutation results remain visible after a blocker clears, selection changes or a pursuit closes. The inbox can be refreshed for new worker events. Public demo contact receipts no longer promise a nonexistent later verification queue.
-- Final combined verification: production build, frontend typecheck and targeted ESLint passed. All 164 tests passed: 135 backend and 29 frontend (11 command, 6 handoff projection, 8 existing inbox and 4 listing-insight tests). Root lint is still absent; full frontend lint has its two known starter violations.
+- Verification before the final upstream merge: production build, frontend typecheck and targeted ESLint passed. All 164 tests passed: 135 backend and 29 frontend (11 command, 6 handoff projection, 8 existing inbox and 4 listing-insight tests). Root lint is still absent; full frontend lint has its two known starter violations.
 - Browser QA used fictional records in a temporary route, now removed: at 375px the contact form retains email and authorization after a returned sign-in error; the error is scoped to the submitted action and its persistent notice can be dismissed. Draft recipients/subject/body display as “Draft · Not sent”; the no-fitting-slot placeholder explains that preferences do not clear it, and its shortcut opens the preferences dialog. Anonymous `/dashboard` redirects to `/auth/login`. These checks did not write real pursuit/profile rows or establish deployed RLS correctness.
 - Live owner login, real-row/RLS verification and deployment remain unverified; owner sign-in and a hosting target were requested. A must scope the single-mailbox worker before multi-user deployment and guard in-flight writes before reliable cancellation. No credentials/session were fabricated and no worker/mailbox/migration/paid enrichment command was run.
 
@@ -44,7 +50,7 @@ The final fetch also found [PR #5](https://github.com/WilliamAbraham/Scout2.0/pu
 - The alert script uses a blank agent profile. A backend adapter must translate saved `search_profiles` criteria and structured tour windows into the agent profile. Pipeline reasons such as `owner_listed` and `enrichment_incomplete` also need a mapping to persisted assessment/blocker values.
 - No new working frontend endpoint or persisted worker-state contract was found. Keep live pursuit actions disabled and preserve unknown work state until the store/service adapters and mappings land. No benchmark, mailbox or worker command was run during this inspection.
 
-## Current inbox implementation — 2026-09-12
+## Earlier inbox implementation — 2026-09-12 (superseded by handoff integration above)
 
 Implemented the user-approved direction from the [inbox/process review](docs/reviews/2026-09-12-inbox-process-review.md) on `codex/implement-pursuit-inbox`.
 
@@ -55,6 +61,11 @@ Implemented the user-approved direction from the [inbox/process review](docs/rev
 - The live reader is implemented but successful authenticated data loading, deployment/migrations and live RLS behavior remain unverified. The current importer still does not populate per-user feed records. Backend commands, reply contents and next-action/tour outcome contracts remain absent.
 - Verification: 72 backend tests plus 8 frontend projection/transition tests passed. Frontend typecheck, production build and targeted lint passed. `yarn lint` remains unavailable because the root script is absent. Anonymous `/dashboard` returns HTTP 307 to `/auth/login`.
 - Browser checks: desktop inbox; 375px layout with document width 375px; move-in receipt without stage advance; contact remains unverified; response focus moves to the receipt heading; stop/Closed/restore; assessment filters and non-match detail. No live mailbox/database access or migrations ran.
+
+## Backend completion handoffs (2026-09-12)
+
+Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). These documents reflect a source audit, not a new live test. The worker still uses the older enrichment provider, refuses live sending, and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings, and restart-safe spending/delivery remain pending. Local uncommitted one-email runner/contact-adapter work must be coordinated with its author. No backend behavior changes or live sends were made for this documentation task. Upstream snapshot validation: all 154 tests passed with Node type stripping enabled, documentation links and `git diff --check` passed, and `yarn lint` remained unavailable because no root lint script exists.
+
 ## Persisted worker pipeline (2026-09-12, branch `worktree-claude`)
 
 The worker now runs the whole alert path against Postgres in one cycle: Gmail alert sync → `listings`/`user_listings` upsert → deterministic match against `search_profiles` → `pursuits` row → broker enrichment → `contact_snapshot` or `needs_human: no_contact` → outreach turn. `backend/src/pipeline/postgresStore.ts` is the single persistence adapter (it implements the worker's `WorkerStore` and the alert stage's `AlertStore`); `backend/src/pipeline/match.ts` is the budget/bedroom hard filter; `backend/scripts/worker.ts` is the only entry point. `processAlerts.ts` and the file-based processed-id set were removed.
@@ -69,11 +80,19 @@ The worker now runs the whole alert path against Postgres in one cycle: Gmail al
 Verified live on 2026-09-12: two cycles ingested two alerts (nine listings, nine pursuits, all `no_contact` because enrichment found no verified email), a third cycle composed one draft for a pursuit seeded with an `example.com` contact, and a fourth cycle composed nothing new. `npm run typecheck` and all 135 backend tests pass; the backend `test` script now discovers every `src/**/*.test.ts`.
 
 Next for A: real `sendMail` via Gmail (needs the `gmail.send` scope and re-consent), per-user tokens from `gmail_tokens`, reply routing in `syncUser`, then flip the worker out of dry-run.
+## Latest verified broker discovery
+
+The revised OpenRouter agent independently identified **Fatma Kara / FIND Real Estate for 620 East 6th Street #9A** from the original address-only input on 2026-09-12. It generated one candidate StreetEasy URL, read the live page, validated its heading and available rent, and extracted the actual Listed by section. No expected name, manually injected source, or screenshot was supplied. Two paid calls (one hosted contact search) cost **$0.003407284, or 0.34¢**, in 7.882 seconds. A later offline replay verified rejection of an email tied to a conflicting brokerage. Personal email/phone remain unverified. See the [live result](docs/enrichment/fatma-live-result-2026-09-12.md).
+
+Search is required when source evidence is absent; citation text must actually support broker attribution. Unsupported candidates are excluded from contact lookup. Personal contacts require agent/brokerage evidence and cannot duplicate generic office values. Cache policy is `listing-evidence-v3`. All 154 tests and enrichment TypeScript checks pass; root lint remains unavailable. The worker still uses its existing BrokerEnrichment provider. This successful unit-level test does not establish general batch recall.
+
 ## Latest enrichment cost test
 
 On 2026-09-12, an approved $0.10 test processed all four listings from a different StreetEasy recommendation email with GPT-4.1 Mini / Parallel fast and a fresh local cache. Actual API-reported spend was $0.020800404 total (0.52¢ per listing), over eight stage requests and approximately 45 seconds. No named brokers were found; three listings returned generic company contact channels and one returned no contact details. This is a cost measurement, not successful listing-agent enrichment. See the [benchmark report](docs/enrichment/mini-cost-benchmark-2026-09-12.md).
 
-The prompt now matches the two-search allowance and available search-only tool. `yarn test` passes all 123 tests and the enrichment TypeScript check passes. `yarn lint` was attempted but the root lint script is still absent. The older review and integration snapshots below retain their historical status; these latest test results supersede old missing-test claims. Raw email and API artifacts remain in ignored `data/` directories.
+The subsequent 620 East 6th Street #9A test cost $0.006410748 and missed Fatma Kara, visible in the user's listing screenshot. The OpenRouter agent now preserves optional listing URLs, attempts a bounded direct HTML read, and enforces one budgeted discovery recovery stage when no supported broker is found. Available source text must support the broker name, address and unit. The Gmail input adapter forwards the URL; the outreach runner still uses its existing BrokerEnrichment service, not this agent. See [retrieval behavior and limitations](docs/enrichment/openrouter-agent.md#retrieval-upgrade-2026-09-12).
+
+The earlier upgrade passed all 135 offline tests and the enrichment TypeScript check. `yarn lint` was attempted but the root lint script is still absent. An approved fresh rerun of the upgraded agent cost $0.008392432 (0.84¢) across three stages and four reported searches, and still missed Fatma Kara. Two unsupported candidates were flagged needs_review; one source was a different property. The contact stage also duplicated generic office values under a candidate, exposing an ownership-validation defect. The original input lacked a URL, so direct-page retrieval was not exercised. See the [live regression report](docs/enrichment/openrouter-agent.md#live-regression-result-2026-09-12). Earlier 0.52¢/listing figures describe the old two-stage configuration. Raw email and API artifacts remain in ignored `data/` directories.
 
 ## Latest upstream integration
 

@@ -8,6 +8,8 @@ import path from 'node:path';
 import {resolveDirect} from './sources.ts';
 import type {ContactRoute} from './sources.ts';
 import {EnrichmentBudget} from './spend.ts';
+import {canonicalListingUrl, candidateListingUrl, readListingPage} from './listingPage.ts';
+import type {ListingPage} from './listingPage.ts';
 import {normalizeAddress, normalizeUnit} from './service.ts';
 import type {EmailListing} from './service.ts';
 
@@ -36,7 +38,7 @@ const contactsSchema = z.object({
 type Evidence = z.infer<typeof evidenceSchema>;
 type Contact = z.infer<typeof contactSchema>;
 type Citation = {url: string; content: string};
-export type ResearchStage = 'discovery' | 'contacts';
+export type ResearchStage = 'discovery' | 'discovery_retry' | 'contacts';
 export interface ResearchedAgent extends z.infer<typeof personSchema> {
   id: string;
   attributionStatus: 'source_cited' | 'provided_image' | 'needs_review';
@@ -78,7 +80,7 @@ export interface AgentOptions {
 
 export const AGENT_MODEL = 'openai/gpt-4.1-mini';
 export const REQUEST_ALLOWANCE_USD = 0.02;
-const CACHE_VERSION = 'lean-agent-v1';
+const CACHE_VERSION = 'listing-evidence-v3';
 const inFlight = new Map<string, Promise<AgentEnrichmentResult>>();
 
 const rules = `You research public business contacts for NYC rental listings. Use supplied evidence and the available search tool, not memory.
@@ -90,7 +92,7 @@ Find ALL co-listing brokers. Absence of names on the brokerage website does not 
 Cite the actual URL and a short verbatim supporting excerpt for every attribution and contact. Report conflicts and stale sources.
 Missing contact details must never remove a discovered name. Never invent emails or infer them from a naming pattern.
 Keep generic office/team contact channels separate from personal contacts. A site footer does not identify an individual agent's email.
-You may search at most twice per stage. Start with exact address/unit searches, then target missing evidence. Return partial results when the budget is used; do not repeat failed searches.
+You may search at most twice per stage. Include New York in address searches. If results concern another city, street, or unit, change the query and use the second search. Search failure is not evidence that the listing has no brokers. Return partial results when the budget is used; do not repeat failed searches.
 Output only the requested JSON schema. Unknown fields are null or empty arrays, with a reason in notes.`;
 
 function urlKey(value: string): string | null {
@@ -149,7 +151,23 @@ function validContact(contact: Contact | null, kind: 'email' | 'phone', citation
   return {...contact, value};
 }
 
+function validPersonalContact(contact: Contact | null, kind: 'email' | 'phone', agent: ResearchedAgent, citations: Citation[]): Contact | null {
+  const validated = validContact(contact, kind, citations, agent.notes);
+  if (!validated) return null;
+  const source = citations.find(c => urlKey(c.url) === urlKey(validated.evidence.url));
+  const text = ` ${normalizeAddress(source?.content ?? '')} `;
+  const namesAgent = text.includes(` ${normalizeAddress(agent.name)} `);
+  const namesBrokerage = text.includes(` ${normalizeAddress(agent.brokerage)} `);
+  const exactListingSource = urlKey(validated.evidence.url) === urlKey(agent.attribution.url);
+  if (!namesAgent || (!namesBrokerage && !exactListingSource)) {
+    agent.notes.push(`Rejected personal ${kind}: source does not establish this agent at the listing brokerage.`);
+    return null;
+  }
+  return validated;
+}
+
 export async function enrichWithAgent(input: EmailListing, options: AgentOptions): Promise<AgentEnrichmentResult> {
+  if (input.listingUrl) input = {...input, listingUrl: canonicalListingUrl(input.listingUrl)!};
   // Never reuse a different unit, price, brokerage, model, or screenshot's result.
   const key = createHash('sha256').update(JSON.stringify({version: CACHE_VERSION, input,
     model: options.model ?? AGENT_MODEL, engine: options.searchEngine ?? 'parallel', direct: options.direct !== false,
@@ -187,6 +205,8 @@ export async function enrichWithAgent(input: EmailListing, options: AgentOptions
 }
 
 async function runAgent(input: EmailListing, options: AgentOptions): Promise<AgentEnrichmentResult> {
+  const suppliedUrl = canonicalListingUrl(input.listingUrl);
+  const listingUrl = suppliedUrl ?? candidateListingUrl(input);
   const model = options.model ?? AGENT_MODEL;
   if (model !== AGENT_MODEL) throw new Error(`Cost-controlled enrichment only permits ${AGENT_MODEL}; no automatic premium-model fallback`);
   if (options.searchEngine && options.searchEngine !== 'parallel') throw new Error('Cost-controlled enrichment requires Parallel search');
@@ -198,10 +218,24 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
   const result: AgentEnrichmentResult = {
     input, model, searchEngine: 'parallel',
     inputMode: options.listingImage ? 'listing_facts_and_image' : 'listing_facts', checkedAt: new Date().toISOString(), execution: 'partial',
-    listingStatus: 'unresolved', listingUrl: null, agents: [], officeContacts: [], directContacts: [], notes: [], stages: [],
+    listingStatus: 'unresolved', listingUrl: suppliedUrl ?? null, agents: [], officeContacts: [], directContacts: [], notes: [], stages: [],
     cost: {reportedUsd: 0, cacheHit: false, budgetLimitUsd: budget.limitUsd},
     evidencePolicy: 'model_reported_with_provider_citations; human_review_before_outreach',
   };
+  let listingPage: ListingPage | undefined;
+  if (listingUrl) {
+    try {
+      const page = await readListingPage(listingUrl, options.fetch ?? fetch);
+      const heading = /^(.*?)\s+#(.+)$/.exec(page.heading ?? '');
+      if (!heading || normalizeAddress(heading[1]!) !== normalizeAddress(input.address)
+        || normalizeUnit(heading[2]!) !== normalizeUnit(input.unit)) throw new Error('Listing page heading does not match the exact address and unit');
+      if (page.price !== undefined && page.price !== input.price) throw new Error('Listing page price conflicts with the input; possible stale listing');
+      listingPage = page;
+      result.listingUrl = page.url;
+      result.notes.push(suppliedUrl ? 'Read supplied listing URL before broker discovery.'
+        : 'Read an address-derived candidate URL and verified the exact listing heading before discovery.');
+    } catch (error) {result.notes.push(`Listing page read failed; falling back to search: ${safeError(error)}`);}
+  }
   // Direct adapters cost no model/search credits. They supplement discovery; an
   // office route never terminates the search for named co-brokers.
   if (options.direct !== false && options.cacheDir) {
@@ -229,12 +263,13 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
       {type: 'image_url', image_url: {url: image.dataUrl, detail: 'high'}},
     ] : prompt;
     if (Buffer.byteLength(prompt, 'utf8') > 12_000) throw new Error('Research context exceeds 12 KB; retained roster needs review');
+    const useSearch = !(stage === 'discovery' && (listingPage || options.listingImage));
     const request = {
       model: result.model, max_completion_tokens: 2500,
       messages: [{role: 'system' as const, content: `${rules}\nThe required output JSON schema is: ${JSON.stringify(format.json_schema.schema)}`}, {role: 'user' as const, content}],
-      tools: [
+      ...(useSearch ? {tools: [
         {type: 'openrouter:web_search', parameters: {engine: 'parallel', mode: 'fast', max_results: 3, max_uses: 2, max_total_results: 6, max_characters: 1500}},
-      ] as unknown as NonNullable<ChatCompletionCreateParamsNonStreaming['tools']>,
+      ] as unknown as NonNullable<ChatCompletionCreateParamsNonStreaming['tools']>, tool_choice: 'required' as const} : {}),
       max_tool_calls: maxToolCalls,
       provider: {sort: 'price', allow_fallbacks: false, require_parameters: true, max_price: {prompt: 0.4, completion: 1.6}},
       response_format: format,
@@ -253,6 +288,7 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
       ? result.cost.reportedUsd + reported : null;
     if (budget.haltedReason) result.notes.push(budget.haltedReason);
     const citations = collectCitations(raw);
+    if (stage === 'discovery' && listingPage) citations.unshift(listingPage);
     result.stages.push({stage, responseId: raw.id, usage: raw.usage, citations});
     // Persist even malformed/refused responses for debugging before attempting to parse.
     await options.save?.(stage, result, raw);
@@ -260,44 +296,89 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
     if (!choice || choice.finish_reason !== 'stop' || !choice.message.content || choice.message.refusal) throw new Error(`${stage}: incomplete or refused response`);
     return {data: schema.parse(JSON.parse(choice.message.content)), citations, raw};
   }
-  try {
-    const discovery = await research('discovery', `Find every named listing broker. First query: ${JSON.stringify(`"${input.address}" "${input.unit}"`)}. Do not add rent or office address to that query. Use the remaining search for an exact listing URL plus "Listed by" or missing co-agent evidence. Retain all supported names; owner/team listings need no invented people. Do not research contacts yet. Input: ${JSON.stringify(input)}`, discoverySchema);
-    result.listingStatus = discovery.data.listingStatus;
-    result.listingUrl = discovery.data.listingUrl && urlKey(discovery.data.listingUrl) ? discovery.data.listingUrl : null;
-    result.notes.push(...discovery.data.notes);
-    result.agents = discovery.data.agents.filter(p => p.name.trim()).map((p, i) => {
+  function retainDiscovery(data: z.infer<typeof discoverySchema>, citations: Citation[]): void {
+    result.listingUrl ??= data.listingUrl && urlKey(data.listingUrl) ? data.listingUrl : null;
+    result.notes.push(...data.notes);
+    for (const p of data.agents.filter(p => p.name.trim())) {
       const identityMatches = normalizeAddress(p.listedAddress) === normalizeAddress(input.address) && normalizeUnit(p.listedUnit) === normalizeUnit(input.unit);
       const fromImage = identityMatches && options.listingImage && p.attribution.sourceType === 'provided_image'
         && p.attribution.url === options.listingImage.sourceId && !!p.attribution.excerpt.trim();
-      return {...p, id: `agent-${i + 1}`, attributionStatus: fromImage ? 'provided_image'
-        : identityMatches && cited(p.attribution, discovery.citations) ? 'source_cited' : 'needs_review',
-        email: null, phone: null, notes: identityMatches ? [] : ['Address or unit conflict; candidate only.']};
-    });
+      const source = citations.find(c => urlKey(c.url) === urlKey(p.attribution.url));
+      const normalized = ` ${normalizeAddress(source?.content ?? '')} `;
+      const supported = cited(p.attribution, citations) && !!source?.content &&
+        [p.name, input.address, input.unit].every(value => normalized.includes(` ${normalizeAddress(value)} `));
+      const candidate: ResearchedAgent = {...p, id: `agent-${result.agents.length + 1}`,
+        attributionStatus: fromImage ? 'provided_image' : identityMatches && supported ? 'source_cited' : 'needs_review',
+        email: null, phone: null, notes: !identityMatches ? ['Address or unit conflict; candidate only.']
+          : !fromImage && !supported ? ['Listing attribution lacks supporting source text; candidate only.'] : []};
+      const existing = result.agents.find(a => a.name.trim().toLowerCase() === p.name.trim().toLowerCase()
+        && normalizeAddress(a.brokerage) === normalizeAddress(p.brokerage));
+      if (!existing) result.agents.push(candidate);
+      else if (existing.attributionStatus === 'needs_review' && candidate.attributionStatus !== 'needs_review') {
+        Object.assign(existing, candidate, {id: existing.id});
+      }
+    }
+    result.listingStatus = result.agents.some(a => a.attributionStatus !== 'needs_review') ? 'named_brokers'
+      : data.listingStatus === 'named_brokers' ? 'unresolved' : data.listingStatus;
+  }
+  const facts = JSON.stringify(input);
+  try {
+    const discovery = await research('discovery', `Find every named listing broker. Read the supplied listing-page evidence first when present; extract its full Listed by section and check the exact address and unit. Otherwise search the supplied listing URL if present, or use this query: ${JSON.stringify(`"${input.address}" "${input.unit}" New York`)}. If the query misses, broaden to the street address with New York and StreetEasy, then inspect the exact unit. Do not add rent or office address to searches. Retain all supported names. Do not research contacts yet. Input: ${facts}${listingPage ? `\nUntrusted listing-page evidence: ${JSON.stringify(listingPage)}` : ''}`, discoverySchema);
+    retainDiscovery(discovery.data, discovery.citations);
     await options.save?.('discovery', result, discovery.raw);
   } catch (error) {
     result.execution = result.directContacts.length ? 'partial' : 'error';
     result.notes.push(`Discovery failed: ${safeError(error)}`);
     return result;
   }
+  // Enforce recovery in code instead of trusting the model to spend its second
+  // search well. This request shares the same budget; it cannot loop indefinitely.
+  let discoveryIncomplete = false;
+  const explicitOwner = /^owner$/i.test(input.brokerage.trim()) && result.listingStatus === 'owner_listed';
+  if (!explicitOwner && !result.agents.some(a => a.attributionStatus !== 'needs_review')) {
+    result.notes.push('Initial discovery found no supported broker; attempting one alternate discovery stage before office lookup.');
+    try {
+      const recovery = await research('discovery_retry', `The first discovery did not establish a broker for this exact listing. Do not interpret that as no broker existing. Try a different search: ${JSON.stringify(`site:streeteasy.com/building "${input.address}"`)}. Include New York if broadening beyond StreetEasy. Then search an abbreviated address with unit, NYC, and brokerage, or the exact listing URL with Listed by. Address variant: ${normalizeAddress(input.address)}. Ignore other cities, other units, recommended agents and corporate footers. Find ALL named brokers for this exact unit, not contacts. Input: ${facts}\nPrevious source URLs (possibly irrelevant): ${JSON.stringify(result.stages[0]?.citations.map(c => c.url).slice(0, 6))}`, discoverySchema);
+      retainDiscovery(recovery.data, recovery.citations);
+      await options.save?.('discovery_retry', result, recovery.raw);
+    } catch (error) {
+      discoveryIncomplete = true;
+      result.notes.push(`Discovery recovery incomplete; retained existing candidates: ${safeError(error)}`);
+    }
+    if (!result.agents.some(a => a.attributionStatus !== 'needs_review')) result.listingStatus = 'unresolved';
+  }
   if (!result.agents.length && result.directContacts.some(c => c.email || c.phone)) {
-    result.execution = 'completed';
+    result.execution = discoveryIncomplete ? 'partial' : 'completed';
     result.notes.push('Reused direct brokerage contacts; no paid contact-stage request. Broker roster remains limited to discovered listing evidence.');
     return result;
   }
   try {
-    const compactRoster = result.agents.map(a => ({id: a.id, name: a.name, brokerage: a.brokerage, attributionUrl: a.attribution.url}));
+    const compactRoster = result.agents.filter(a => a.attributionStatus !== 'needs_review').map(a => ({id: a.id, name: a.name, brokerage: a.brokerage, attributionUrl: a.attribution.url}));
     const contacts = await research('contacts', `Find public email and phone for every retained person. Preserve IDs and names. Never guess emails. Keep office contacts separate. If no people, find only the named brokerage or owner channel. Input: ${JSON.stringify(input)}\nRoster: ${JSON.stringify(compactRoster)}`, contactsSchema);
     for (const person of contacts.data.agents) {
       const agent = result.agents.find(a => a.id === person.id);
-      if (!agent) {result.notes.push(`Ignored unknown contact-stage ID: ${person.id}`); continue;}
+      if (!agent || agent.attributionStatus === 'needs_review') {result.notes.push(`Ignored unknown or unsupported contact-stage ID: ${person.id}`); continue;}
       agent.notes.push(...person.notes);
-      agent.email = validContact(person.email, 'email', contacts.citations, agent.notes);
-      agent.phone = validContact(person.phone, 'phone', contacts.citations, agent.notes);
+      agent.email = validPersonalContact(person.email, 'email', agent, contacts.citations);
+      agent.phone = validPersonalContact(person.phone, 'phone', agent, contacts.citations);
     }
     result.officeContacts.push(...contacts.data.officeContacts.map(office => ({...office,
       email: validContact(office.email, 'email', contacts.citations, result.notes), phone: validContact(office.phone, 'phone', contacts.citations, result.notes)})));
+    for (const agent of result.agents) {
+      for (const kind of ['email', 'phone'] as const) {
+        const contact = agent[kind];
+        if (!contact) continue;
+        const normalize = (value: string) => kind === 'email' ? value.trim().toLowerCase() : value.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+        const officeValue = result.officeContacts.some(o => o[kind] && normalize(o[kind]!.value) === normalize(contact.value));
+        const genericEvidence = /(?:general|head|corporate|brokerage) office|office (?:email|phone)|general (?:inquiries|contact)/i.test(`${contact.evidence.excerpt} ${agent.notes.join(' ')}`);
+        if (officeValue || genericEvidence) {
+          agent[kind] = null;
+          agent.notes.push(`Excluded ${kind} from personal contacts: evidence identifies a generic office channel.`);
+        }
+      }
+    }
     result.notes.push(...contacts.data.notes);
-    result.execution = 'completed';
+    result.execution = discoveryIncomplete ? 'partial' : 'completed';
     await options.save?.('contacts', result, contacts.raw);
   } catch (error) {result.notes.push(`Contact research failed; discovered names retained: ${safeError(error)}`);}
   return result;

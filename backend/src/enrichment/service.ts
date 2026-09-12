@@ -2,10 +2,12 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdir, readFile, rename, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {load} from 'cheerio';
+import {canonicalListingUrl} from './listingPage.ts';
 import {resolveDirect} from './sources.ts';
 import type {ContactRoute} from './sources.ts';
 
 export interface EmailListing {
+  listingUrl?: string;
   address: string;
   unit: string;
   price: number;
@@ -132,7 +134,9 @@ export function parseEmailListing(value: unknown): EmailListing {
       throw new Error(`Invalid input field: ${key}`);
     }
   }
+  const listingUrl = canonicalListingUrl(parsed.listingUrl);
   return {
+    ...(listingUrl ? {listingUrl} : {}),
     address: String(parsed.address), unit: String(parsed.unit), brokerage: String(parsed.brokerage),
     brokerageOfficeAddress: String(parsed.brokerageOfficeAddress), city: String(parsed.city),
     price: Number(parsed.price), bedrooms: Number(parsed.bedrooms), bathrooms: Number(parsed.bathrooms),
