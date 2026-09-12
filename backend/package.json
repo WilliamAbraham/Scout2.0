@@ -16,8 +16,10 @@
     "test:enrichment": "node --test src/enrichment/*.test.ts",
     "typecheck:enrichment": "tsc -p tsconfig.enrichment.json",
     "typecheck": "tsc",
-    "extract": "node scripts/extract.ts",
-    "test": "node --test"
+    "worker": "node scripts/worker.ts",
+    "watch-inbox": "node scripts/watchInbox.ts",
+    "test": "node --test \"src/**/*.test.ts\"",
+    "enrich:agent": "node scripts/enrichAgent.ts"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
@@ -25,8 +27,10 @@
     "cheerio": "^1.2.0",
     "drizzle-orm": "^0.45.2",
     "googleapis": "^178.0.0",
+    "openai": "^7.15.0",
     "playwright": "^1.62.1",
-    "postgres": "^3.4.9"
+    "postgres": "^3.4.9",
+    "zod": "^4.6.2"
   },
   "devDependencies": {
     "@types/node": "^26.4.0",

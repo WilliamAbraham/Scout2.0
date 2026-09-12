@@ -2,6 +2,7 @@ import {sql} from 'drizzle-orm';
 import {
   check,
   index,
+  integer,
   jsonb,
   pgPolicy,
   pgTable,
@@ -69,6 +70,11 @@ export const pursuits = pgTable('pursuits', {
   enrichedAt: timestamp('enriched_at', {withTimezone: true}),
 
   lastAgentRunAt: timestamp('last_agent_run_at', {withTimezone: true}),
+
+  // When the worker should send the next bump if the broker has not replied.
+  nextFollowUpAt: timestamp('next_follow_up_at', {withTimezone: true}),
+  followUpCount: integer('follow_up_count').notNull().default(0),
+
   createdAt: timestamp('created_at', {withTimezone: true}).defaultNow().notNull(),
   updatedAt: timestamp('updated_at', {withTimezone: true}).defaultNow().notNull(),
 }, table => [
@@ -86,6 +92,9 @@ export const pursuits = pgTable('pursuits', {
   // The worker's queue of pursuits it can still act on.
   index('pursuits_actionable_idx').on(table.stage)
     .where(sql`${table.needsHumanReason} is null`),
+  index('pursuits_follow_up_idx').on(table.nextFollowUpAt)
+    .where(sql`${table.nextFollowUpAt} is not null and ${table.needsHumanReason} is null`),
+  check('pursuits_follow_up_count_nonnegative', sql`${table.followUpCount} >= 0`),
   index('pursuits_thread_idx').on(table.userId, table.threadId),
   pgPolicy('pursuits_select_own', {
     for: 'select', to: authenticatedRole, using: ownedBy(table.userId),

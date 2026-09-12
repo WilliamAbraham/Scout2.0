@@ -1,4 +1,10 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["src/enrichment/service.ts", "src/enrichment/*.test.ts", "scripts/enrichListing.ts"]
+  "include": [
+    "src/enrichment/service.ts",
+    "src/enrichment/*.test.ts",
+    "scripts/enrichListing.ts",
+    "src/enrichment/agent.ts",
+    "scripts/enrichAgent.ts"
+  ]
 }

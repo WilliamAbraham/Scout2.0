@@ -4,9 +4,11 @@ Automating NYC apartment hunting. Today the repo contains a single-user StreetEa
 
 ## Start here
 
+- [Person B handoff](docs/2026-09-12-person-b-handoff.md): backend integration status and proposed next frontend work.
 - [Project](project.md): intended experience, architecture, scope, and work division.
 - [Engineering context](context.md): current implementation, setup, commands, check failures, and next work.
 - [Inbox/process review](docs/reviews/2026-09-12-inbox-process-review.md): proposed listing intake, status mapping, and inbox layout grounded in current code.
+- [Enrichment cost benchmark](docs/enrichment/mini-cost-benchmark-2026-09-12.md): four new listings cost 2.08¢ total; named-broker discovery remains unresolved.
 - [Design review](docs/reviews/2026-09-12-product-design-review.md): prioritized findings and acceptance checks.
 - [Product design](docs/superpowers/specs/2026-09-12-scout-product-design.md): product proposal and two-person hackathon plan.
 
@@ -39,4 +41,4 @@ npm run dev:web
 npm run dev:api
 ```
 
-The intended ports are 3000 for the frontend and 4000 for the backend. Root `yarn lint` currently has no script. `yarn test` passed 72 backend tests and 8 frontend inbox tests on 2026-09-12; this does not verify a connected agent pipeline.
+The intended ports are 3000 for the frontend and 4000 for the backend. Root `yarn lint` currently has no script. See [engineering context](context.md) for checks after integrating the persisted worker and frontend inbox.

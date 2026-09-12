@@ -1,0 +1,25 @@
+{
+  "Location": {
+    "City": "New York",
+    "Building": "503 West 22nd Street",
+    "Apartment": "5W",
+    "Address": "503 West 22nd Street",
+    "Zipcode": 10011,
+    "State": "NY",
+    "Neighborhood": "Chelsea",
+    "FullAddress": "503 West 22nd Street, New York, NY. 10011"
+  },
+  "Details": {
+    "Price": "$8,800",
+    "Description": "Canvas Property Group is the exclusive broker/agent for the landlord",
+    "Bathrooms": "2 Baths",
+    "Bedrooms": "3 Bedrooms"
+  },
+  "Agents": [
+    {
+      "Email": "info@canvaspg.com",
+      "phone": "123456789",
+      "Name": "info@canvaspg.com"
+    }
+  ]
+}

@@ -1,0 +1,179 @@
+{
+  "ranAt": "2026-09-12T20:07:56.166Z",
+  "baselinePath": "data/enrichment/latest-email-tests/2026-09-12T19-46-14-876Z/results.json",
+  "mode": "fresh direct requests; no seeded agent names or provider results",
+  "results": [
+    {
+      "input": {
+        "address": "118 Mulberry Street",
+        "unit": "R4",
+        "brokerage": "DALLAL",
+        "brokerageOfficeAddress": "260 Madison Avenue, New York, NY 10016",
+        "city": "New York",
+        "price": 7495,
+        "bedrooms": 3,
+        "bathrooms": 1
+      },
+      "elapsedMs": 2,
+      "result": {
+        "status": "not_found",
+        "execution": "completed",
+        "resolution": "unresolved",
+        "outreachReady": false,
+        "issues": [
+          "No direct adapter for this brokerage"
+        ],
+        "warnings": [],
+        "contactRoutes": []
+      },
+      "directRequests": 0
+    },
+    {
+      "input": {
+        "address": "57 Grand Street",
+        "unit": "4",
+        "brokerage": "Owner",
+        "brokerageOfficeAddress": "",
+        "city": "New York",
+        "price": 7995,
+        "bedrooms": 3,
+        "bathrooms": 1
+      },
+      "elapsedMs": 0,
+      "result": {
+        "status": "needs_review",
+        "execution": "completed",
+        "resolution": "owner_listed",
+        "outreachReady": false,
+        "issues": [
+          "Email explicitly says Owner. No broker identity or public contact supplied; retain original listing inquiry route."
+        ],
+        "warnings": [],
+        "contactRoutes": []
+      },
+      "directRequests": 0
+    },
+    {
+      "input": {
+        "address": "248 Mott Street",
+        "unit": "6-5",
+        "brokerage": "Centennial Properties NY",
+        "brokerageOfficeAddress": "",
+        "city": "New York",
+        "price": 9495,
+        "bedrooms": 3,
+        "bathrooms": 2
+      },
+      "elapsedMs": 1769,
+      "result": {
+        "status": "needs_review",
+        "execution": "completed",
+        "resolution": "brokerage_only",
+        "outreachReady": false,
+        "issues": [
+          "Unit conflict: email #6-5; brokerage #5-6. No automatic unit reversal."
+        ],
+        "warnings": [
+          "Contact card office address may be stale; only corroborated team identity and phone are used"
+        ],
+        "contactRoutes": [
+          {
+            "kind": "leasing_team",
+            "name": "Centennial Properties",
+            "email": "apts@centpropny.com",
+            "phone": "212-228-9300",
+            "relationship": "unit_conflict",
+            "sourceUrls": [
+              "https://centpropny.com/index.cfm?page=properties",
+              "https://centpropny.com/soho-nolita/apartment-for-rent/248-mott-st-5-6/5044",
+              "https://centpropny.com/?page=agents&id=1",
+              "https://www.centpropny.com/images//agents/1.vcf"
+            ],
+            "fetchedAt": "2026-09-12T20:07:54.056Z"
+          }
+        ]
+      },
+      "directRequests": 4
+    },
+    {
+      "input": {
+        "address": "503 West 22nd Street",
+        "unit": "5W",
+        "brokerage": "Canvas Property Group",
+        "brokerageOfficeAddress": "",
+        "city": "New York",
+        "price": 8800,
+        "bedrooms": 3,
+        "bathrooms": 2
+      },
+      "elapsedMs": 1227,
+      "result": {
+        "status": "source_matched",
+        "execution": "completed",
+        "resolution": "leasing_team_verified",
+        "outreachReady": true,
+        "issues": [],
+        "warnings": [
+          "Rejected invalid or placeholder phone in Canvas feed"
+        ],
+        "contactRoutes": [
+          {
+            "kind": "leasing_team",
+            "name": "Canvas listing contact",
+            "email": "info@canvaspg.com",
+            "phone": null,
+            "relationship": "exact_listing",
+            "sourceUrls": [
+              "https://canvaspg.com/luxury-rentals/",
+              "https://canvaspg.com/js/canvas/alllisting.js",
+              "https://mc.wlep1.com/api/ajax/canvas/property",
+              "https://canvaspg.com/luxury-rentals-listing-page/?propertyid=6",
+              "https://canvaspg.com/js/canvas/singlelisting.js",
+              "https://mc.wlep1.com/api/ajax/canvas/single?propertyid=6"
+            ],
+            "fetchedAt": "2026-09-12T20:07:55.315Z"
+          }
+        ]
+      },
+      "directRequests": 6
+    },
+    {
+      "input": {
+        "address": "423 West Street",
+        "unit": "1C",
+        "brokerage": "Next Step Realty New York LLC",
+        "brokerageOfficeAddress": "4 East 8th Street, New York, NY 10003",
+        "city": "New York",
+        "price": 9495,
+        "bedrooms": 3,
+        "bathrooms": 1
+      },
+      "elapsedMs": 755,
+      "result": {
+        "status": "needs_review",
+        "execution": "completed",
+        "resolution": "brokerage_only",
+        "outreachReady": false,
+        "issues": [
+          "Office contact verified; no listing roster established by the company contact page"
+        ],
+        "warnings": [],
+        "contactRoutes": [
+          {
+            "kind": "brokerage_office",
+            "name": "Next Step Realty client services",
+            "email": "clients@nextstepny.com",
+            "phone": "646-568-1311",
+            "relationship": "brokerage",
+            "sourceUrls": [
+              "https://www.thenextsteprealty.com/",
+              "https://www.thenextsteprealty.com/contact"
+            ],
+            "fetchedAt": "2026-09-12T20:07:55.886Z"
+          }
+        ]
+      },
+      "directRequests": 3
+    }
+  ]
+}

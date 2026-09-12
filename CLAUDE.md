@@ -24,13 +24,13 @@ npm run dev:web                  # next dev, port 3000 (frontend/package.json al
 npm run dev:api                  # backend HTTP server on port 4000 (only /health is wired up)
 ```
 
-Backend pipeline scripts (`npm run <script> -w backend`, or the root aliases `sync`/`inspect`/`survey`/`extract`):
+Backend pipeline scripts (`npm run <script> -w backend`, or the root aliases `sync`/`inspect`/`survey`/`worker`):
 ```bash
 npm run sync -w backend                    # Gmail -> data/messages.json (message id corpus)
 npm run inspect -w backend -- <messageId>  # dump one raw message (add --full for untruncated HTML)
 npm run survey -w backend -- --offline     # shape/stats report across the cached corpus
 npm run probe -w backend -- <url> <selector...>  # inspect live DOM via Playwright (HEADLESS=0 to watch)
-npm run extract -w backend                 # (see backend/scripts/extract.ts when it lands)
+npm run worker -w backend -- --once        # one full cycle: Gmail alerts -> Postgres -> enrich -> draft (dry-run; see context.md)
 node --experimental-strip-types backend/scripts/importListings.ts   # parse cached mail -> upsert into `listings`
 ```
 
@@ -58,7 +58,7 @@ The pipeline is staged as separate, independently re-runnable steps, each backed
 2. **`backend/src/gmail/mailbox.ts`** — lists message ids matching `LISTINGS_QUERY` (`from:noreply@email.streeteasy.com`), saves them to `data/messages.json`, and caches full message resources as `data/raw/<id>.json`. `loadMessage`/`loadMessages` prefer the cache and only call Gmail on a miss (or return `null` for one bad id rather than failing a whole batch).
 3. **`backend/src/gmail/message.ts`** — flattens a raw Gmail message resource into `RawMessage` (subject/from/date/text/html), walking the MIME tree to find the right body part. Pure, no I/O.
 4. **`backend/src/gmail/listings.ts`** — `parseListing()` uses `cheerio` to pull `.ListingCard` elements out of the email HTML into structured listings, then `resolveRentalUrl()` follows the email's tracking-link redirect chain (capped at 5 hops) to the canonical `streeteasy.com/rental/<id>` URL. Note the intentional typo-matched selector `.ListinCard-info--detailsContainer` — StreetEasy's own markup misspells it.
-5. **`backend/scripts/importListings.ts`** — reads every cached raw message, parses listings, and upserts into the `listings` table keyed on `rentalId` (see below), merging in a newly-observed `brokerage` only if one wasn't already recorded.
+5. **`backend/src/pipeline/postgresStore.ts`** — the worker's one persistence adapter: syncs alerts from Gmail, upserts `listings` (refreshing price and `last_seen_at`) and per-user `user_listings`, applies the hard filter in `pipeline/match.ts`, creates `pursuits`, stores enrichment results, and records turn outcomes as `pursuit_events`. `backend/scripts/worker.ts` drives it; `backend/src/pipeline/alert.ts` is the parse → persist → enrich stage it calls per alert. `backend/scripts/importListings.ts` is the older listings-only importer.
 6. **`backend/src/db/schema/`** — the schema, split by subsystem (`enums`, `listings`, `gmail`, `profiles`, `pursuits`, `rls`) and re-exported from `index.ts`, which is what `drizzle.config.ts` points at. `backend/src/db/index.ts` loads `DATABASE_URL` from the root `.env` and connects with `prepare: false` (Supabase's transaction pooler doesn't support prepared statements).
 
 ### Schema, RLS, and the two-person seam

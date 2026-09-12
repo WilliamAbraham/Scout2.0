@@ -2,6 +2,8 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdir, readFile, rename, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {load} from 'cheerio';
+import {resolveDirect} from './sources.ts';
+import type {ContactRoute} from './sources.ts';
 
 export interface EmailListing {
   address: string;
@@ -59,6 +61,8 @@ export interface EnrichmentResult {
   issues: string[];
   warnings: string[];
   attempts: JsonObject[];
+  contactRoutes: ContactRoute[];
+  resolution: 'agents_verified' | 'leasing_team_verified' | 'brokerage_only' | 'owner_listed' | 'unresolved';
 }
 
 export interface EnrichmentOptions {
@@ -72,6 +76,8 @@ export interface EnrichmentOptions {
   timeoutMs?: number;
   retries?: number;
   indexedFallback?: boolean;
+  directSources?: boolean;
+  directOnly?: boolean;
   log?: (message: string) => void;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -115,7 +121,9 @@ export function parseEmailListing(value: unknown): EmailListing {
     const match = /^(.*?)\s+#([^#]+)$/.exec(parsed.address);
     if (match) {parsed.address = match[1]!.trim(); parsed.unit = match[2]!.trim();}
   }
-  for (const key of ['address', 'unit', 'brokerage', 'brokerageOfficeAddress', 'city']) {
+  if (parsed.brokerageOfficeAddress === undefined || parsed.brokerageOfficeAddress === null) parsed.brokerageOfficeAddress = '';
+  if (typeof parsed.brokerageOfficeAddress !== 'string') throw new Error('Invalid brokerageOfficeAddress');
+  for (const key of ['address', 'unit', 'brokerage', 'city']) {
     if (typeof parsed[key] !== 'string' || !parsed[key].trim()) throw new Error(`Missing input field: ${key}`);
     parsed[key] = parsed[key].trim();
   }
@@ -241,7 +249,8 @@ export class BrokerEnrichment {
   private result(input: EmailListing, values: Partial<EnrichmentResult> & Pick<EnrichmentResult, 'status'>): EnrichmentResult {
     const result: EnrichmentResult = {execution: 'completed', input, brokerageUrl: null, listingUrl: null, agents: [], candidateAgents: [],
       sourceListing: null, rosterCompleteness: 'unverified', outreachReady: false, checkedAt: new Date().toISOString(),
-      issues: [], warnings: [], attempts: structuredClone(this.attempts), ...values};
+      issues: [], warnings: [], attempts: structuredClone(this.attempts), contactRoutes: [], resolution: 'unresolved', ...values};
+    if (result.status === 'source_matched' && result.agents.length) result.resolution = 'agents_verified';
     if (result.issues.some(issue => issue.includes('API call budget exhausted'))) result.execution = 'budget_exhausted';
     if (result.execution !== 'completed') {
       result.outreachReady = false;
@@ -454,21 +463,44 @@ export class BrokerEnrichment {
     if (this.running) throw new Error('Use a separate enrichment instance for concurrent runs');
     const input = parseEmailListing(value);
     this.running = true; this.calls = 0; this.attempts.length = 0;
-    try {return await this.resolve(input);} catch (error) {
+    let direct: Awaited<ReturnType<typeof resolveDirect>>;
+    try {
+      if (this.options.directSources !== false) {
+        direct = await resolveDirect(input, this.options);
+        if (direct) {
+          this.attempts.push(...direct.attempts);
+          this.calls = direct.attempts.filter(attempt => !attempt.cached).length;
+        }
+      }
+      if (direct?.resolution === 'owner_listed' || direct?.resolution === 'leasing_team_verified' || this.options.directOnly) {
+        return this.result(input, direct ?? {status: 'not_found', issues: ['No direct adapter for this brokerage']});
+      }
+      const result = await this.resolve(input, direct?.brokerageUrl ?? undefined);
+      if (direct) {
+        result.contactRoutes = direct.contactRoutes;
+        result.issues.push(...direct.issues);
+        result.warnings.push(...direct.warnings);
+        if (result.resolution === 'unresolved') result.resolution = direct.resolution;
+        if (!result.brokerageUrl) result.brokerageUrl = direct.brokerageUrl;
+        if (result.status === 'not_found' && direct.contactRoutes.length) result.status = 'needs_review';
+        if (direct.execution !== 'completed' && result.execution === 'completed' && result.status !== 'source_matched') result.execution = 'partial';
+      }
+      return result;
+    } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return this.result(input, {status: 'error', execution: 'error', issues: [message]});
+      return this.result(input, {...direct, status: direct?.contactRoutes.length ? 'needs_review' : 'error', execution: 'error', issues: [...(direct?.issues ?? []), message]});
     } finally {this.running = false;}
   }
 
-  private async resolve(input: EmailListing): Promise<EnrichmentResult> {
+  private async resolve(input: EmailListing, knownBusinessUrl?: string): Promise<EnrichmentResult> {
     const issues: string[] = [], candidates: string[] = [];
-    const businesses = await this.search(`${input.brokerage} ${input.brokerageOfficeAddress} ${input.city} real estate official website`);
+    const businesses = knownBusinessUrl ? [knownBusinessUrl] : await this.search(`${input.brokerage} ${input.brokerageOfficeAddress} ${input.city} real estate official website`);
     let business: {url: string; page: PageData} | undefined;
     for (const url of businesses.slice(0, 3)) {
       try {
         const page = await this.scrape(url), text = normalizeAddress(page.markdown);
         const officeStreet = input.brokerageOfficeAddress.split(',')[0]!;
-        if (text.includes(normalizeAddress(input.brokerage)) && text.includes(normalizeAddress(officeStreet))) {business = {url, page}; break;}
+        if (text.includes(normalizeAddress(input.brokerage)) && (knownBusinessUrl || text.includes(normalizeAddress(officeStreet)))) {business = {url, page}; break;}
       } catch (error) {issues.push(`${url}: ${error instanceof Error ? error.message : String(error)}`);}
     }
     if (!business) return this.result(input, {status: 'not_found', execution: issues.length ? 'partial' : 'completed', issues: ['Could not verify brokerage website', ...issues]});

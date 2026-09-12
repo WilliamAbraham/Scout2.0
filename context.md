@@ -2,6 +2,10 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Latest handoff integration — 2026-09-12
+
+Merged upstream `c3a05f4` into `codex/implement-pursuit-inbox`, including the persisted worker and [Person B handoff](docs/2026-09-12-person-b-handoff.md). README and context conflicts were resolved by preserving both frontend and backend updates. The handoff describes pre-merge branch status; its command contract remains a proposal. Earlier statements below about an unmerged, in-memory worker are historical. Upstream live database results are reported by A and were not independently rerun during this pull. Local verification: after `npm ci` installed the updated lockfile dependencies, `yarn test` passed 135 backend and 8 frontend tests. `yarn lint` remains unavailable because the root script is absent. No live worker, mailbox, migration, or paid enrichment command was run.
+
 ## Latest profile-design integration — 2026-09-12
 
 Merged upstream `ce8c8df` into `codex/implement-pursuit-inbox`. The incoming change is documentation only: it replaces the five-step onboarding plan with a writable Search preferences panel. It adds no endpoint or schema migration.
@@ -12,7 +16,7 @@ Merged upstream `ce8c8df` into `codex/implement-pursuit-inbox`. The incoming cha
 - Verification: 72 backend and 8 frontend tests passed, plus direct parser assertions for valid/blank values, malformed numbers, bounds, availability, summaries and the field whitelist. Browser checks covered signed-out sample, an editable sample, malformed and inverted rent values with preserved input, adding/removing windows at 375px, a first-profile empty form, and a blocked form after a failed read. The temporary sample QA route was removed. No live profile was written; authenticated persistence and deployed RLS remain unverified.
 - Frontend typecheck, targeted ESLint and production build passed. Root `yarn lint` remains unavailable. Full frontend lint retains the two existing violations in `components/theme-switcher.tsx` and `tailwind.config.ts`.
 
-### Unmerged worker branch reviewed
+### Historical worker branch review (superseded by the persisted pipeline below)
 
 The final fetch also found [PR #5](https://github.com/WilliamAbraham/Scout2.0/pull/5), `origin/codex/enrichment-cost-benchmark` at `97217cf`. Its parent `3aaac3c` adds outreach, alert processing and an inbox watcher. This branch was inspected read-only and is not merged into the frontend branch.
 
@@ -32,6 +36,25 @@ Implemented the user-approved direction from the [inbox/process review](docs/rev
 - The live reader is implemented but successful authenticated data loading, deployment/migrations and live RLS behavior remain unverified. The current importer still does not populate per-user feed records. Backend commands, reply contents and next-action/tour outcome contracts remain absent.
 - Verification: 72 backend tests plus 8 frontend projection/transition tests passed. Frontend typecheck, production build and targeted lint passed. `yarn lint` remains unavailable because the root script is absent. Anonymous `/dashboard` returns HTTP 307 to `/auth/login`.
 - Browser checks: desktop inbox; 375px layout with document width 375px; move-in receipt without stage advance; contact remains unverified; response focus moves to the receipt heading; stop/Closed/restore; assessment filters and non-match detail. No live mailbox/database access or migrations ran.
+## Persisted worker pipeline (2026-09-12, branch `worktree-claude`)
+
+The worker now runs the whole alert path against Postgres in one cycle: Gmail alert sync → `listings`/`user_listings` upsert → deterministic match against `search_profiles` → `pursuits` row → broker enrichment → `contact_snapshot` or `needs_human: no_contact` → outreach turn. `backend/src/pipeline/postgresStore.ts` is the single persistence adapter (it implements the worker's `WorkerStore` and the alert stage's `AlertStore`); `backend/src/pipeline/match.ts` is the budget/bedroom hard filter; `backend/scripts/worker.ts` is the only entry point. `processAlerts.ts` and the file-based processed-id set were removed.
+
+- **Dry-run is the default and `--live` is refused** until Gmail sending exists: the open turn composes a real draft through OpenRouter and records it as a `draft_composed` event (once per pursuit), but no pursuit leaves `matched` and no `email_sent` event is written. Follow-ups are not scheduled in dry-run.
+- **Alerts are not marked processed if a listing failed before persistence**, so a database error retries next cycle. An enrichment failure after the pursuit exists is recorded as `needs_human: no_contact` with the error in the note, not retried.
+- Spend bounds: `SCOUT_ALERT_NEWER_THAN` (default `2d`) and `SCOUT_ALERTS_PER_CYCLE` (default 5) cap how many alerts enrich per cycle.
+- `SCOUT_OWNER_USER_ID` bootstraps a default `search_profiles` row for the demo owner. The live Supabase DB has a seeded owner `scout-demo@example.com` (`6d859f4e-413e-44f1-9279-3c92b15a7b06`) inserted directly into `auth.users` with no password; remove it once B's sign-up flow produces a real owner.
+- Migrations `0002` and `0003_pursuit_follow_ups` were applied to the live DB on 2026-09-12. `0002`'s `brokerage` column add is now `IF NOT EXISTS` because the DB had received a since-deleted migration for it. `0003` was generated for the follow-up columns the outreach commit added to the schema without a migration.
+- Event types written so far: `created`, `enriched`, `escalated`, `draft_composed`; and outside dry-run `email_sent`, `follow_up_scheduled`, `tour_booked`, `packet_sent`, `stage_changed`. `EVENT` in `postgresStore.ts` is the list.
+
+Verified live on 2026-09-12: two cycles ingested two alerts (nine listings, nine pursuits, all `no_contact` because enrichment found no verified email), a third cycle composed one draft for a pursuit seeded with an `example.com` contact, and a fourth cycle composed nothing new. `npm run typecheck` and all 135 backend tests pass; the backend `test` script now discovers every `src/**/*.test.ts`.
+
+Next for A: real `sendMail` via Gmail (needs the `gmail.send` scope and re-consent), per-user tokens from `gmail_tokens`, reply routing in `syncUser`, then flip the worker out of dry-run.
+## Latest enrichment cost test
+
+On 2026-09-12, an approved $0.10 test processed all four listings from a different StreetEasy recommendation email with GPT-4.1 Mini / Parallel fast and a fresh local cache. Actual API-reported spend was $0.020800404 total (0.52¢ per listing), over eight stage requests and approximately 45 seconds. No named brokers were found; three listings returned generic company contact channels and one returned no contact details. This is a cost measurement, not successful listing-agent enrichment. See the [benchmark report](docs/enrichment/mini-cost-benchmark-2026-09-12.md).
+
+The prompt now matches the two-search allowance and available search-only tool. `yarn test` passes all 123 tests and the enrichment TypeScript check passes. `yarn lint` was attempted but the root lint script is still absent. The older review and integration snapshots below retain their historical status; these latest test results supersede old missing-test claims. Raw email and API artifacts remain in ignored `data/` directories.
 
 ## Latest upstream integration
 
@@ -82,7 +105,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `npm run lint -w frontend` | Frontend ESLint; no backend lint script |
 | `npm run build -w frontend` | Frontend production build |
 | `yarn lint` | Required convention; currently fails because root script is absent |
-| `yarn test` | Required convention; 72 backend tests and 8 frontend inbox tests pass |
+| `yarn test` | Required convention; runs backend and frontend tests |
 | `npm run sync` | Gmail message corpus discovery/cache workflow |
 | `npm run inspect -- <messageId>` | Inspect cached/raw mail; output can contain personal information |
 | `npm run survey -- --offline` | Cached corpus survey |
@@ -90,7 +113,7 @@ Install dependencies from the repo root with `npm ci` using the existing lockfil
 | `node backend/scripts/importListings.ts` | Import cached listings; writes to configured database |
 | `npm run db:generate -w backend` | Generate Drizzle migration |
 | `npm run db:migrate -w backend` | Apply migrations to configured database |
-| `npm run extract` | Broken placeholder: `backend/scripts/extract.ts` does not exist |
+| `npm run worker -- --once` | One worker cycle: sync alerts, persist, enrich, compose drafts (dry-run) |
 
 Root `.env` supplies backend `DATABASE_URL`; `frontend/.env.local` supplies the two public Supabase variables documented in `frontend/.env.example`. Credentials, OAuth tokens, env files, and `data/` are ignored. Do not commit or print secrets or cached private mail.
 

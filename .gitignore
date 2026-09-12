@@ -21,9 +21,14 @@ npm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+.cursor/worktrees/
 
 # Next.js
 .next/
 out/
 next-env.d.ts
 .vercel
+
+# Local agent worktrees
+.claude/worktrees/
+.cursor/worktrees/
