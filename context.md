@@ -80,7 +80,7 @@ Reference: read-only inspection of local `agentAI/src/app/page.tsx` and `globals
 - Visual inspection: desktop three-pane workspace and 375px mobile Inbox/Details views. Selecting a mobile row opens Details and Back to inbox returns to the rail. Mobile document width matched 375px. Full keyboard traversal and OS text scaling were not exercised for this revision.
 - No live auth, persistence, ingestion, outreach, or calendar integration tested. The public homepage contains only synthetic fixtures; keep it that way until authenticated live-data integration is designed.
 
-Delivery: committed on `codex/dashboard-first-pass`. Push to `origin` returned HTTP 403: signed-in GitHub account `ktpeii` lacks write access to `WilliamAbraham/Scout2.0`. The branch is local only and no PR was created; push and PR remain pending repository access.
+Delivery: pushed `codex/dashboard-first-pass` to `origin` on 2026-09-12 after switching the active GitHub account to `ktpei`. The branch tracks `origin/codex/dashboard-first-pass`; the earlier HTTP 403 access blocker is resolved. No PR has been created.
 
 The current direction is a compact, grouped inbox with a map workspace and selected-apartment detail. Needs you contains actual blockers; routine outreach should not require approval for every apartment. Match reasons and unknowns replace uncalibrated percentages. Agent activity is available per apartment through a center-pane tab. Photos and source URLs remain unavailable for synthetic fixtures.
 
