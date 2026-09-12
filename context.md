@@ -2,6 +2,16 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Listing information enrichment — 2026-09-12
+
+Implemented on `codex/more-enrichment-on-frontend`, with shared dashboard wiring in `52f7182` and listing components/tests in `e709720`.
+
+- Rows now include bathrooms beside bedrooms. Overview adds a facts snapshot, recorded brokerage, budget comparison and a rent-only 12-month calculation. Both budget bounds are respected; absent/failed profile reads produce no comparison. Public demo comparisons use the labeled sample profile.
+- `listings.brokerage` and `last_seen_at` are selected and projected without a schema migration. Invalid/missing metadata stays unknown. Last seen is an alert observation, not a claim of current availability or a price recheck.
+- **Before you tour** expands into listing unknowns and questions about move-in/lease terms, extra costs, size, laundry and pets, plus saved must-haves/dealbreakers. These are unverified questions; no actual amenity or external lookup data was added.
+- Verified locally: `yarn test` passed 135 backend and 29 frontend tests, including four new budget/metadata/question tests. Frontend typecheck, targeted ESLint and `git diff --check` passed. Root `yarn lint` is still unavailable because there is no root script.
+- Browser QA: desktop under-budget ($300) and over-budget ($700) comparisons, annual rent amounts, expandable questions, and mobile snapshot at 375px with document width equal to viewport width. No live database, mailbox, migration or paid enrichment command ran. Authenticated source metadata loading and deployed RLS remain unverified.
+
 ## Latest handoff integration — 2026-09-12
 
 B's handoff implementation is on `codex/more-enrichment-on-frontend`. The [dashboard–worker contract](docs/hackathon-contract.md) records actual payloads, contact/close/pause semantics and worker limits; the [demo runbook](docs/demo-runbook.md) covers login and deployment preparation.

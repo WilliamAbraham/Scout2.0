@@ -1,6 +1,6 @@
 # Scout
 
-Automating NYC apartment hunting. Today the repo contains a single-user StreetEasy email ingestion pipeline, a Postgres listings schema, and a Next.js/Supabase frontend with an interactive sample dashboard. The autonomous apartment-hunting product is proposed, not implemented.
+Automating NYC apartment hunting. The repo includes a persisted, draft-only worker and a Next.js/Supabase dashboard with an interactive public demo. Live email sending and calendar execution remain pending.
 
 ## Start here
 
@@ -18,7 +18,9 @@ Open `/` after starting the frontend for the interactive demo. The agentAI-inspi
 
 The typed model distinguishes incoming assessment (Checking fit, Matched, Not a fit, Dismissed), pursuit stage, blockers, and explicit worker activity. Eight fictional examples cover intake, non-matches, contact research, queued outreach, broker waiting and tours. Answer and contact submissions create demo receipts; they preserve stage and never manufacture a sent reply, verified contact or booking. Undo, stop/restore pursuit, dismiss/restore incoming listing, pause, search and filters are available.
 
-`/dashboard` adds an authenticated view over the existing Supabase `user_listings`, listing/pursuit/event, Gmail health and profile schema. Listing and pursuit records remain read-only. Successful password login now lands there. Reads validate the session and filter by user ID under RLS; missing records and connection errors have explicit states. The deployment/population of those tables and successful live reads remain unverified. Live commands, messages and typed tour details need the backend worker contract and are not simulated in this view.
+`/dashboard` reads owner-scoped listing, pursuit, event, Gmail-health and profile records. It displays recorded drafts separately from sent messages and exposes contact supply, close pursuit, and pause/resume through session-authorized Server Actions. Other blocker resolutions remain placeholders. Password login lands here; successful live owner reads/writes, deployed RLS, and deployment remain unverified. See the [dashboard–worker contract](docs/hackathon-contract.md) for exact semantics and remaining worker limits.
+
+Apartment overviews show recorded beds, baths, neighborhood and brokerage, a rent-only 12-month calculation, and the difference from the saved rent limits. The public demo uses an explicitly labeled sample budget. An expandable **Before you tour** checklist includes listing unknowns and personal must-haves/dealbreakers. Listing source details show when the alert was received and last observed, without claiming that availability or current price was rechecked. Amenities, fees, lease terms and square footage are still unconfirmed; this UI adds no external enrichment lookup.
 
 **Search preferences** is writable for signed-in users on both `/` and `/dashboard`. The single panel loads or creates their profile, validates rent/room bounds and weekly tour windows, and saves only editable criteria through a session-authorized Server Action. Signed-out visitors see a read-only sample; failed profile reads block editing. Gmail connection metadata is shown, but Google connection setup, move-in and editable timezone await backend support. Tour windows use New York time. Authenticated persistence and deployed RLS have not been exercised yet.
 
