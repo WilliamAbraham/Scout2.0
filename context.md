@@ -6,6 +6,27 @@ Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source r
 
 Assigned remaining work to [Codex](docs/backend/Codex.md) (enrichment and costs), [Claude](docs/backend/Claude.md) (ingestion and continuous worker), and [Cursor](docs/backend/Cursor.md) (outreach and conversations). Cursor's Gmail sender, outbox, and dry-run boundary are implemented on `cursor/gmail-outreach`; live test mail is redirected to `williamja100@gmail.com` after `gmail.send` re-consent. The worker still uses the older enrichment provider and lacks broker-reply routing. The separate inbox watcher only logs mail. Unknown listing layouts can be marked processed with no listings. Codex spend persistence and Claude thread-history wiring remain pending. See [outreach-delivery.md](docs/backend/outreach-delivery.md).
 
+## Continuous worker (2026-09-12, branch `worktree-claude`)
+
+The ingestion workstream in [docs/backend/Claude.md](docs/backend/Claude.md) is implemented. `backend/scripts/worker.ts` is the single entry point; the separate inbox watcher and its module were deleted. Operations are documented in [the worker guide](docs/backend/worker-operations.md).
+
+- **Checkpointed sync.** `src/gmail/sync.ts` polls from `gmail_accounts.history_id` and falls back to a date-bounded catch-up when history has aged out, capped at 14 days and reported as truncated beyond that. The cursor advances only after every message in a batch is durably accounted for.
+- **Routing.** `src/pipeline/routing.ts` classifies mail as alert, reply, or noise. Replies match a pursuit by Gmail thread id first and sender address second; the mailbox's own outbound copies are never treated as replies. `thread_messages` stores every inbound and outbound email, so a reply after a restart still routes to the same pursuit with its history.
+- **Parser.** `src/gmail/alert.ts` isolates each card, so a malformed listing does not discard its siblings, and distinguishes an unsupported template from an empty notice. Replayed across all 90 cached messages: 292 cards, 0 malformed, 1 correctly classified non-alert. StreetEasy caps alerts at five cards even when the subject claims more.
+- **Ledger.** `processed_messages` gained status, attempts, backoff, last error, and outcome. Failures retry roughly 5m/20m/80m and then become `exhausted`, which stays visible in `npm run worker:status`.
+- **Enrichment outcomes.** `classifyEnrichment` separates permanent failures (no contact, owner-listed) from retryable ones (dead source, exhausted budget). Retryable ones are deferred without escalating to the owner and without re-charging enriched listings.
+- **Concurrency.** `worker_leases` holds the mailbox for one process, renewed between messages; a second worker declines. Overlapping ticks are skipped. `SIGINT`/`SIGTERM` finish the message in flight, release the lease, and exit.
+- **One mailbox, one user.** The worker refuses to start when more than one user has a search profile, since there is a single local token.
+- `--live` is still refused: `sendMail` is a stub.
+
+Migration `0004_worker_ledger` adds `thread_messages`, `worker_leases`, `worker_runs`, and the ledger columns. It was applied to the live database on 2026-09-12.
+
+Verification: `npm run typecheck` passes and all 199 backend tests pass, including `src/pipeline/pipeline.test.ts`, which drives a fixture alert through the real parser, store, matcher, enrichment seam, and outreach handoff, and covers duplicate mail, restart, concurrent workers, malformed cards, unsupported templates, transient failures, and budget exhaustion.
+
+Live checks on 2026-09-12 against the real mailbox (`williamsaibroker@gmail.com`) and Supabase, all in dry-run: migration `0004_worker_ledger` applied; `npm run worker -- --once` completed cleanly and exited in about ten seconds; `npm run worker:status` reports the run, the ledger, and 12 matched pursuits with 9 blocked on `no_contact`. Sync ran in incremental mode from the stored history id and correctly found nothing new, because an earlier cycle had already consumed the recent mail. **The alert to enrichment to draft path was therefore not exercised live in this session** — no new StreetEasy mail arrived during it. The first live attempt did expose a real bug, a Date bound into raw SQL in the lease query, which is fixed and covered by the offline tests.
+
+Root `yarn lint` still has no script.
+
 ## Persisted worker pipeline (2026-09-12, branch `worktree-claude`)
 
 The worker now runs the whole alert path against Postgres in one cycle: Gmail alert sync → `listings`/`user_listings` upsert → deterministic match against `search_profiles` → `pursuits` row → broker enrichment → `contact_snapshot` or `needs_human: no_contact` → outreach turn. `backend/src/pipeline/postgresStore.ts` is the single persistence adapter (it implements the worker's `WorkerStore` and the alert stage's `AlertStore`); `backend/src/pipeline/match.ts` is the budget/bedroom hard filter; `backend/scripts/worker.ts` is the only entry point. `processAlerts.ts` and the file-based processed-id set were removed.
@@ -19,7 +40,7 @@ The worker now runs the whole alert path against Postgres in one cycle: Gmail al
 
 Verified live on 2026-09-12: two cycles ingested two alerts (nine listings, nine pursuits, all `no_contact` because enrichment found no verified email), a third cycle composed one draft for a pursuit seeded with an `example.com` contact, and a fourth cycle composed nothing new. `npm run typecheck` and all 135 backend tests pass; the backend `test` script now discovers every `src/**/*.test.ts`.
 
-Next for A: apply `0004_black_falcon` (outbox), persist full thread history and `mailboxEmail` on `loadTurnInput`, route broker replies in `syncUser`, then run an authorized `outreach:send-test` before `--live`. Per-user tokens from `gmail_tokens` remain later work.
+Next for A: apply `0004_worker_ledger` and `0005_outreach_outbox`, persist `mailboxEmail` on `loadTurnInput` if it is still missing, then run an authorized `outreach:send-test` before `--live`. Per-user tokens from `gmail_tokens` remain later work.
 ## Latest verified broker discovery
 
 The revised OpenRouter agent independently identified **Fatma Kara / FIND Real Estate for 620 East 6th Street #9A** from the original address-only input on 2026-09-12. It generated one candidate StreetEasy URL, read the live page, validated its heading and available rent, and extracted the actual Listed by section. No expected name, manually injected source, or screenshot was supplied. Two paid calls (one hosted contact search) cost **$0.003407284, or 0.34¢**, in 7.882 seconds. A later offline replay verified rejection of an email tied to a conflicting brokerage. Personal email/phone remain unverified. See the [live result](docs/enrichment/fatma-live-result-2026-09-12.md).

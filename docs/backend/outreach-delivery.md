@@ -12,7 +12,7 @@ Cursor owns sender, outbox, and turns. Claude owns `outreach/worker.ts`, `pipeli
 
 ## Outbox
 
-Table `outreach_outbox` (migration `0004_black_falcon.sql`). RLS enabled, **no policies** — worker-only, same as `processed_messages`.
+Table `outreach_outbox` (migration `0005_outreach_outbox.sql`). RLS enabled, **no policies** — worker-only, same as `processed_messages`.
 
 Action identity: `(user_id, pursuit_id, action_key)`
 

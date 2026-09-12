@@ -1,6 +1,6 @@
 {
-  "id": "ce94de53-185b-41e6-805e-7bb0414987d0",
-  "prevId": "026715fc-f8dd-47ba-a456-feba2e46ebe9",
+  "id": "6d54da61-4627-4727-8e5d-112f2c5ccd97",
+  "prevId": "ce94de53-185b-41e6-805e-7bb0414987d0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1548,6 +1548,193 @@
         }
       },
       "isRLSEnabled": false
+    },
+    "public.outreach_outbox": {
+      "name": "outreach_outbox",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "pursuit_id": {
+          "name": "pursuit_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "action_key": {
+          "name": "action_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "to_addrs": {
+          "name": "to_addrs",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cc_addrs": {
+          "name": "cc_addrs",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subject": {
+          "name": "subject",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "thread_id": {
+          "name": "thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "rfc822_message_id": {
+          "name": "rfc822_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_message_id": {
+          "name": "provider_message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_thread_id": {
+          "name": "provider_thread_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "claimed_at": {
+          "name": "claimed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "outreach_outbox_state_idx": {
+          "name": "outreach_outbox_state_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "outreach_outbox_user_id_users_id_fk": {
+          "name": "outreach_outbox_user_id_users_id_fk",
+          "tableFrom": "outreach_outbox",
+          "tableTo": "users",
+          "schemaTo": "auth",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "outreach_outbox_pursuit_id_pursuits_id_fk": {
+          "name": "outreach_outbox_pursuit_id_pursuits_id_fk",
+          "tableFrom": "outreach_outbox",
+          "tableTo": "pursuits",
+          "columnsFrom": [
+            "pursuit_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "outreach_outbox_user_action_unique": {
+          "name": "outreach_outbox_user_action_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "user_id",
+            "pursuit_id",
+            "action_key"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "outreach_outbox_state_known": {
+          "name": "outreach_outbox_state_known",
+          "value": "\"outreach_outbox\".\"state\" in ('intended','claimed','sent','failed','uncertain','cancelled')"
+        },
+        "outreach_outbox_action_key_not_empty": {
+          "name": "outreach_outbox_action_key_not_empty",
+          "value": "length(trim(\"outreach_outbox\".\"action_key\")) > 0"
+        }
+      },
+      "isRLSEnabled": true
     },
     "public.worker_leases": {
       "name": "worker_leases",

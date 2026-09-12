@@ -51,10 +51,14 @@ const enrichmentReady = (overrides: Partial<EnrichmentResult> = {}): EnrichmentR
   ...overrides,
 });
 
-type Recorded = {ingested: string[]; saved: Array<{pursuitId: string; hasSnapshot: boolean; summary: Record<string, unknown>}>};
+type Recorded = {
+  ingested: string[];
+  saved: Array<{pursuitId: string; hasSnapshot: boolean; summary: Record<string, unknown>}>;
+  deferred: Array<{pursuitId: string; summary: Record<string, unknown>}>;
+};
 
 function fakeStore(ingest: Partial<IngestOutcome> = {}): AlertStore & Recorded {
-  const recorded: Recorded = {ingested: [], saved: []};
+  const recorded: Recorded = {ingested: [], saved: [], deferred: []};
   return {
     ...recorded,
     async ingestListing(_userId, _source, listing) {
@@ -67,8 +71,12 @@ function fakeStore(ingest: Partial<IngestOutcome> = {}): AlertStore & Recorded {
     async saveEnrichment(_userId, pursuitId, snapshot, summary) {
       recorded.saved.push({pursuitId, hasSnapshot: snapshot !== null, summary});
     },
+    async noteEnrichmentDeferred(_userId, pursuitId, summary) {
+      recorded.deferred.push({pursuitId, summary});
+    },
     get ingested() { return recorded.ingested; },
     get saved() { return recorded.saved; },
+    get deferred() { return recorded.deferred; },
   };
 }
 
@@ -127,6 +135,7 @@ test('processListingAlert escalates no_contact when enrichment has no email', as
   const outcome = await processListingAlert('user-1', source, listing, pipeline);
 
   assert.equal(outcome.status, 'needs_human');
+  if (outcome.status === 'needs_human') assert.equal(outcome.reason, 'no_contact');
   assert.equal(pipeline.store.saved[0]?.hasSnapshot, false);
 });
 
@@ -142,14 +151,38 @@ test('processListingAlert skips non-matches without enriching', async () => {
   assert.equal(enriched, 0);
 });
 
-test('processListingAlert records an enrichment failure as needs_human instead of retrying', async () => {
+test('a thrown enrichment error defers the listing rather than escalating it', async () => {
+  // A provider outage says nothing about the listing, so the owner gets no
+  // blocker to resolve and the pursuit stays eligible for another attempt.
   const pipeline = deps({enrich: async () => { throw new Error('provider down'); }});
   const outcome = await processListingAlert('user-1', source, listing, pipeline);
 
+  assert.equal(outcome.status, 'deferred');
+  if (outcome.status === 'deferred') assert.equal(outcome.reason, 'transient');
+  assert.equal(pipeline.store.saved.length, 0);
+  assert.match(String(pipeline.store.deferred[0]?.summary.note), /provider down/);
+});
+
+test('an exhausted budget defers the listing instead of paying again', async () => {
+  const pipeline = deps({
+    enrich: async () => enrichmentReady({execution: 'budget_exhausted', agents: [], outreachReady: false}),
+  });
+  const outcome = await processListingAlert('user-1', source, listing, pipeline);
+
+  assert.equal(outcome.status, 'deferred');
+  if (outcome.status === 'deferred') assert.equal(outcome.reason, 'budget_exhausted');
+  assert.equal(pipeline.store.saved.length, 0, 'a budget stop is not a verdict about the listing');
+});
+
+test('an owner-listed apartment escalates permanently, without a retry', async () => {
+  const pipeline = deps({
+    enrich: async () => enrichmentReady({agents: [], outreachReady: false, resolution: 'owner_listed'}),
+  });
+  const outcome = await processListingAlert('user-1', source, listing, pipeline);
+
   assert.equal(outcome.status, 'needs_human');
-  if (outcome.status === 'needs_human') assert.equal(outcome.reason, 'enrichment_error');
-  assert.equal(pipeline.store.saved[0]?.hasSnapshot, false);
-  assert.match(String(pipeline.store.saved[0]?.summary.note), /provider down/);
+  if (outcome.status === 'needs_human') assert.equal(outcome.reason, 'owner_listed');
+  assert.equal(pipeline.store.deferred.length, 0);
 });
 
 test('processStreetEasyAlert parses listing cards from alert html', async () => {
@@ -179,8 +212,10 @@ test('processStreetEasyAlert parses listing cards from alert html', async () => 
       htmlBody: html,
     }, deps());
 
+    assert.equal(result.layout, 'listing_cards');
     assert.equal(result.listings.length, 1);
     assert.equal(result.listings[0]?.status, 'ready');
+    assert.deepEqual(result.malformed, []);
   } finally {
     globalThis.fetch = originalFetch;
   }
