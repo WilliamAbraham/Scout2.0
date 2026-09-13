@@ -12,7 +12,7 @@
   --amber: #805514;
   --amber-wash: #faf2e4;
   height: 100dvh;
-  padding: 18px;
+  padding: 0;
   background: var(--paper);
   color: var(--ink);
   color-scheme: light;
@@ -71,9 +71,8 @@
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr) 360px;
   overflow: hidden;
-  border: 1px solid #ced2cb;
-  border-radius: 14px;
-  box-shadow: 0 18px 44px -12px #161a1726;
+  border: 0;
+  border-radius: 0;
   background: var(--surface);
 }
 .navigation,
@@ -1066,12 +1065,12 @@
 }
 @media (max-width: 960px) {
   .app {
-    padding: 8px;
+    padding: 0;
   }
   .window {
     display: flex;
     flex-direction: column;
-    border-radius: 10px;
+    border-radius: 0;
   }
   .navigation {
     flex-shrink: 0;

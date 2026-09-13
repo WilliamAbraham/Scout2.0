@@ -5,17 +5,16 @@
 .shell {
   display: grid;
   grid-template-columns: 196px minmax(0, 1fr);
-  min-height: calc(100dvh - 36px);
-  border: 1px solid #ced2cb;
-  border-radius: 14px;
+  min-height: 100dvh;
+  border: 0;
+  border-radius: 0;
   background: var(--surface);
-  box-shadow: 0 18px 44px -12px #161a1726;
 }
 .sidebar {
   padding: 22px 12px;
   background: var(--rail);
   border-right: 1px solid var(--line);
-  border-radius: 14px 0 0 14px;
+  border-radius: 0;
 }
 .brand {
   display: flex;
