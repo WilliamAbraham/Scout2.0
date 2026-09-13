@@ -80,6 +80,20 @@ test('a namesake at another firm is not this listing\'s agent', async () => {
   assert.equal(found.agents[0]?.phone, null);
 });
 
+test('a broker directory listing the agent under another entity still counts', async () => {
+  // LoopNet carries this agent as "Wayfinderpm" while the listing credits OGI
+  // Management. The market is what separates them from an out-of-state
+  // namesake, and the note says which signal was used.
+  const {fetcher} = providers({search: [{
+    url: 'https://www.loopnet.ca/commercial-real-estate-brokers/profile/fatma-kara/x',
+    title: 'Fatma Kara - Real Estate Salesperson',
+    content: 'Fatma Kara. Real Estate Salesperson, Wayfinderpm. New York, NY 10006. P: (646) 398-0662.',
+  }]});
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.equal(found.agents[0]?.phone, '(646) 398-0662');
+  assert.match(found.notes.join(' '), /corroborated by market, not by FIND Real Estate/);
+});
+
 test('a search result that never names the agent supplies nothing', async () => {
   const {fetcher} = providers({search: [{
     url: 'https://findrealestate.com/team', title: 'Our team',

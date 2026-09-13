@@ -156,43 +156,57 @@ function personalEmail(email: string, name: string): boolean {
 }
 
 /**
- * The agent's contact details, from a search for them at their brokerage.
- * A result only counts when its text actually names them, so one agent's page
- * cannot supply another's address.
+ * The agent's contact details.
+ *
+ * Naming someone is not identifying them: "Daniel Ramirez" is a salesperson at
+ * this brokerage and at half a dozen firms across the country, and taking the
+ * first same-named page hands back a stranger's phone number. So a result has
+ * to corroborate. Two passes, because either signal alone misses:
+ *
+ * - The firm. Strongest, and tried first.
+ * - The market. Needed because a broker directory often lists an agent under a
+ *   different entity than the one crediting the listing — this agent appears
+ *   as "Wayfinderpm" on LoopNet and "OGI Management" on StreetEasy — while a
+ *   namesake in another state names neither the firm nor the city.
  */
-async function contactFor(agent: AgentContact, options: LookupOptions): Promise<{skipped?: string}> {
-  // Naming the person is not identifying them. "Daniel Ramirez" is an agent at
-  // this brokerage and also at half a dozen others across the country, so a
-  // page has to place him at THIS firm before its phone number is his.
+async function contactFor(agent: AgentContact, city: string, options: LookupOptions): Promise<{skipped?: string; note?: string}> {
   const firm = brokerageIdentity(agent.brokerage ?? '');
-  if (!firm) return {skipped: `no brokerage to confirm ${agent.name} against`};
+  const market = normalizeAddress(city);
+  if (!firm && !market) return {skipped: `nothing to confirm ${agent.name} against`};
 
-  // Just the person and the firm. Appending "real estate agent email phone
-  // contact" ranks any agent's contact page above the right person's, and on a
-  // common name that is somebody else entirely.
-  const results = await tavily(`"${agent.name}" ${agent.brokerage}`, options);
-  const named = results.filter(result => {
-    const text = normalizeAddress(`${result.title} ${result.text}`);
-    return text.includes(normalizeAddress(agent.name)) && text.includes(firm);
-  });
+  const passes: Array<{query: string; corroborate: (text: string) => boolean; note?: string}> = [];
+  if (firm) passes.push({query: `"${agent.name}" ${agent.brokerage}`, corroborate: text => text.includes(firm)});
+  if (market) {
+    passes.push({
+      query: `"${agent.name}" ${agent.role ?? 'real estate salesperson'} ${city}`,
+      corroborate: text => text.includes(market),
+      note: `${agent.name}'s contact is corroborated by market, not by ${agent.brokerage ?? 'the brokerage'}`,
+    });
+  }
 
-  for (const result of named) {
-    // Only what sits near their name. A directory page lists many people, and
-    // the first phone number on it belongs to whoever is at the top.
-    const at = normalizeAddress(result.text).indexOf(normalizeAddress(agent.name));
-    const near = result.text.slice(Math.max(0, at - 300), at + 600);
+  for (const pass of passes) {
+    const results = await tavily(pass.query, options);
+    for (const result of results) {
+      const haystack = normalizeAddress(`${result.title} ${result.text}`);
+      if (!haystack.includes(normalizeAddress(agent.name)) || !pass.corroborate(haystack)) continue;
 
-    const emails = [...new Set(near.match(EMAIL) ?? [])].map(value => value.toLowerCase())
-      .filter(value => !/\.(png|jpe?g|gif|webp|svg)$/.test(value));
-    const email = emails.find(value => personalEmail(value, agent.name));
-    const phone = (near.match(PHONE) ?? [])[0] ?? null;
-    if (!email && !phone) continue;
+      // Only what sits near their name. A directory page lists many people, and
+      // the first phone number on it belongs to whoever is at the top.
+      const at = normalizeAddress(result.text).indexOf(normalizeAddress(agent.name));
+      const near = result.text.slice(Math.max(0, at - 300), at + 600);
+      const emails = [...new Set(near.match(EMAIL) ?? [])].map(value => value.toLowerCase())
+        .filter(value => !/\.(png|jpe?g|gif|webp|svg)$/.test(value));
+      const email = emails.find(value => personalEmail(value, agent.name));
+      const phone = (near.match(PHONE) ?? [])[0] ?? null;
+      if (!email && !phone) continue;
 
-    agent.sources.push(result.url);
-    agent.email ??= email ?? null;
-    agent.phone ??= phone;
-    agent.context ??= compact(near) || null;
-    if (agent.email) return {};
+      agent.sources.push(result.url);
+      agent.email ??= email ?? null;
+      agent.phone ??= phone;
+      agent.context ??= compact(near) || null;
+      if (agent.email) return pass.note ? {note: pass.note} : {};
+    }
+    if (agent.email || agent.phone) return pass.note ? {note: pass.note} : {};
   }
   return {};
 }
@@ -251,8 +265,9 @@ export async function findListingAgents(input: EmailListing, options: LookupOpti
   const reachable = agents.slice(0, options.maxAgents ?? 3);
   for (const agent of reachable) {
     try {
-      const outcome = await contactFor(agent, options);
+      const outcome = await contactFor(agent, input.city, options);
       if (outcome.skipped) notes.push(`Did not search for a contact: ${outcome.skipped}`);
+      if (outcome.note) notes.push(outcome.note);
     } catch (error) {
       notes.push(`No contact found for ${agent.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
