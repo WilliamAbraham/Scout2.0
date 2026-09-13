@@ -166,20 +166,21 @@ async function contactFor(agent: AgentContact, options: LookupOptions): Promise<
   const named = results.filter(result => normalizeAddress(`${result.title} ${result.text}`).includes(normalizeAddress(agent.name)));
 
   for (const result of named) {
-    const emails = [...new Set(result.text.match(EMAIL) ?? [])].map(value => value.toLowerCase())
+    // Only what sits near their name. A directory page lists many people, and
+    // the first phone number on it belongs to whoever is at the top.
+    const at = normalizeAddress(result.text).indexOf(normalizeAddress(agent.name));
+    const near = result.text.slice(Math.max(0, at - 300), at + 600);
+
+    const emails = [...new Set(near.match(EMAIL) ?? [])].map(value => value.toLowerCase())
       .filter(value => !/\.(png|jpe?g|gif|webp|svg)$/.test(value));
     const email = emails.find(value => personalEmail(value, agent.name));
-    const phone = (result.text.match(PHONE) ?? [])[0] ?? null;
+    const phone = (near.match(PHONE) ?? [])[0] ?? null;
     if (!email && !phone) continue;
 
     agent.sources.push(result.url);
     agent.email ??= email ?? null;
     agent.phone ??= phone;
-    // A short excerpt around the name, so a reader can see who this is.
-    if (!agent.context) {
-      const at = normalizeAddress(result.text).indexOf(normalizeAddress(agent.name));
-      agent.context = compact(result.text.slice(Math.max(0, at - 100), at + 400)) || null;
-    }
+    agent.context ??= compact(near) || null;
     if (agent.email) return;
   }
 }

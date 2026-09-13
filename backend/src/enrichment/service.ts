@@ -152,9 +152,22 @@ export function parseEmailListing(value: unknown): EmailListing {
   };
 }
 
+// NYC writes the same street both ways: an alert says "151 Eighth Avenue" and
+// the listing says "151 8th Avenue". Spelled ordinals become their numeric form
+// so the two compare equal.
+const ORDINALS: Record<string, string> = {
+  first: '1st', second: '2nd', third: '3rd', fourth: '4th', fifth: '5th', sixth: '6th',
+  seventh: '7th', eighth: '8th', ninth: '9th', tenth: '10th', eleventh: '11th', twelfth: '12th',
+};
+const ABBREVIATIONS: Record<string, string> = {
+  street: 'st', avenue: 'ave', road: 'rd', boulevard: 'blvd', place: 'pl',
+  east: 'e', west: 'w', north: 'n', south: 's',
+};
+
 export function normalizeAddress(value: string): string {
-  return value.toLowerCase().replace(/\b(street|avenue|road|boulevard|place|east|west|north|south)\b/g,
-    word => ({street: 'st', avenue: 'ave', road: 'rd', boulevard: 'blvd', place: 'pl', east: 'e', west: 'w', north: 'n', south: 's'}[word]!))
+  return value.toLowerCase()
+    .replace(/\b(street|avenue|road|boulevard|place|east|west|north|south)\b/g, word => ABBREVIATIONS[word]!)
+    .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\b/g, word => ORDINALS[word]!)
     .replace(/[^a-z0-9]+/g, ' ').trim();
 }
 
@@ -363,7 +376,7 @@ const defaultRate = {tavily: 60, firecrawl: 12} as const;
  * apartment and reads its unrelated pages. Brokerages that operate their own
  * consumer site (Compass, Corcoran, Elliman, Nooklyn) are deliberately absent.
  */
-const directoryHost = /(^|\.)(yelp\.com|linkedin\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|reddit\.com|glassdoor\.com|indeed\.com|crunchbase\.com|bbb\.org|yellowpages\.com|mapquest\.com|manta\.com|bizapedia\.com|opencorporates\.com|opengovny\.com|opendatany\.com|creco\.ai|luxenhouse\.com|fastexpert\.com|mystatemls\.com|nybits\.com|linecity\.com|cityfeet\.com|optimalspaces\.com|apartments\.com|rent\.com|hotpads\.com|renthop\.com|nakedapartments\.com|zumper\.com|loopnet\.com|point2homes\.com|homes\.com|redfin\.com|movoto\.com|homesnap\.com|propertyshark\.com|cityrealty\.com|realtytrac\.com|localize\.city|wikipedia\.org|google\.com|yahoo\.com|bing\.com)$/;
+const directoryHost = /(^|\.)(yelp\.com|linkedin\.com|instagram\.com|facebook\.com|x\.com|twitter\.com|tiktok\.com|youtube\.com|pinterest\.com|reddit\.com|glassdoor\.com|indeed\.com|crunchbase\.com|bbb\.org|yellowpages\.com|mapquest\.com|manta\.com|bizapedia\.com|opencorporates\.com|opengovny\.com|opendatany\.com|licensee\.io|nybizdb\.com|bizprofile\.net|nycompanyregistry\.com|newyork-company\.com|creco\.ai|luxenhouse\.com|fastexpert\.com|mystatemls\.com|nybits\.com|linecity\.com|cityfeet\.com|optimalspaces\.com|apartments\.com|rent\.com|hotpads\.com|renthop\.com|nakedapartments\.com|zumper\.com|loopnet\.com|point2homes\.com|homes\.com|redfin\.com|movoto\.com|homesnap\.com|propertyshark\.com|cityrealty\.com|realtytrac\.com|localize\.city|wikipedia\.org|google\.com|yahoo\.com|bing\.com)$/;
 
 export class BrokerEnrichment {
   readonly attempts: JsonObject[] = [];
