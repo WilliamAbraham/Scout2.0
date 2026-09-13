@@ -21,7 +21,7 @@ npm run test                     # node --test, auto-discovering every src/**/*.
 npm run enrich -- backend/fixtures/enrichment/118-mulberry-r4.json
 npm run typecheck:enrichment -w backend  # isolated enrichment typecheck
 npm run dev:web                  # next dev, port 3000 (frontend/package.json also has its own `dev`)
-npm run dev:api                  # backend HTTP server on port 4000 (only /health is wired up)
+npm run dev:api                  # backend HTTP server on port 4000 (/health, POST /refresh-listings)
 ```
 
 Backend pipeline scripts (`npm run <script> -w backend`, or the root aliases `sync`/`inspect`/`survey`/`worker`):
@@ -32,6 +32,7 @@ npm run survey -w backend -- --offline     # shape/stats report across the cache
 npm run probe -w backend -- <url> <selector...>  # inspect live DOM via Playwright (HEADLESS=0 to watch)
 npm run worker -w backend -- --once        # one full cycle: Gmail -> Postgres -> enrich -> draft (dry-run; see docs/backend/worker-operations.md)
 npm run worker:status                      # backlog, last run, blocked work
+npm run refresh-listings                   # re-parse stored alert ids; enrich only new matches
 npm run outreach:reconsent                 # add gmail.send to the local OAuth token
 npm run outreach:send-test                 # send one test email to williamja100@gmail.com
 node --experimental-strip-types backend/scripts/importListings.ts   # parse cached mail -> upsert into `listings`

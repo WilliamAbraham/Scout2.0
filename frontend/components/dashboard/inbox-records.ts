@@ -265,6 +265,13 @@ function eventSummary(event: OrderedEvent): InboxEvent {
         detail: "Scout started tracking this listing.",
         at: event.at,
       };
+    case "enriching":
+      return {
+        id: event.id,
+        title: "Looking up broker contacts",
+        detail: detail ?? "Scout started contact research.",
+        at: event.at,
+      };
     case "enriched":
       return {
         id: event.id,
@@ -407,6 +414,15 @@ function workState(
   );
   if (pursuit.stage === "matched" && validDraft) return "draft_ready";
   if (pursuit.stage === "matched" && hasDraftRecord) return "unknown";
+  const lastEnrich = events.findLast((event) =>
+    ["enriching", "enriched", "error"].includes(event.type),
+  );
+  if (
+    pursuit.stage === "matched" &&
+    !pursuit.enriched_at &&
+    lastEnrich?.type === "enriching"
+  )
+    return "finding_contact";
   if (
     pursuit.stage === "matched" &&
     pursuit.thread_id === null &&
@@ -493,6 +509,9 @@ export function projectRecords(rows: StoredUserListing[]): InboxListing[] {
         (event) => event.type === "draft_composed",
       );
       const reachableContact = contacts.some((contact) => contact.email);
+      const work = pursuit
+        ? workState(pursuit, events, messages, contacts)
+        : null;
       return {
         id: row.id,
         sourceId: source.rental_id,
@@ -529,22 +548,24 @@ export function projectRecords(rows: StoredUserListing[]): InboxListing[] {
                     raisedAt: pursuit.needs_human_at ?? pursuit.updated_at,
                   }
                 : null,
-              work: workState(pursuit, events, messages, contacts),
+              work: work ?? "unknown",
               nextStep:
-                pursuit.stage === "matched" &&
-                !pursuit.needs_human_reason &&
-                validDraft
-                  ? "Review the saved outreach draft before any message is sent."
+                work === "finding_contact"
+                  ? "Scout is looking up broker contacts."
                   : pursuit.stage === "matched" &&
                       !pursuit.needs_human_reason &&
-                      hasDraftRecord
-                    ? "Draft recorded; contents unavailable"
+                      validDraft
+                    ? "Review the saved outreach draft before any message is sent."
                     : pursuit.stage === "matched" &&
                         !pursuit.needs_human_reason &&
-                        pursuit.thread_id === null &&
-                        reachableContact
-                      ? "Ready for Scout’s next cycle"
-                      : "Next action is not reported yet. Review the recorded progress below.",
+                        hasDraftRecord
+                      ? "Draft recorded; contents unavailable"
+                      : pursuit.stage === "matched" &&
+                          !pursuit.needs_human_reason &&
+                          pursuit.thread_id === null &&
+                          reachableContact
+                        ? "Ready for Scout’s next cycle"
+                        : "Next action is not reported yet. Review the recorded progress below.",
               updatedAt: pursuit.updated_at,
               tour: tourFrom(events),
               closedReason: closedReason(events),

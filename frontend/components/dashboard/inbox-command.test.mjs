@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   executePursuitCommand,
+  executeRefreshListings,
   executeSearchPause,
 } from "../../lib/inbox-command.ts";
 
@@ -296,4 +297,31 @@ test("pause cannot create a profile or overwrite a failed profile read", async (
     );
     assert.equal(db.queries.length, 1);
   }
+});
+
+test("refresh listings requires a session and reports the stored-alert result", async () => {
+  const anonymous = client([]);
+  anonymous.auth.getClaims = async () => ({ data: null, error: null });
+  assert.equal(
+    (
+      await executeRefreshListings(anonymous, async () => {
+        throw new Error("should not call the refresh API unsigned");
+      })
+    ).error,
+    "Sign in to refresh listings.",
+  );
+
+  const posted = [];
+  const result = await executeRefreshListings(client([]), async (userId) => {
+    posted.push(userId);
+    return {
+      ok: true,
+      status: 200,
+      body: { messages: 4, newMatches: 1, enriched: 1, skippedExisting: 3 },
+    };
+  });
+  assert.deepEqual(posted, ["session-owner"]);
+  assert.equal(result.error, null);
+  assert.match(result.message ?? "", /1 new match/i);
+  assert.match(result.message ?? "", /enrich/i);
 });

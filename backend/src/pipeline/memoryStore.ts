@@ -268,6 +268,10 @@ export class MemoryStore implements WorkerStore, AlertStore {
     };
   }
 
+  async noteEnrichmentStarted(_userId: string, pursuitId: string): Promise<void> {
+    this.events.push({pursuitId, type: 'enriching'});
+  }
+
   async saveEnrichment(
     _userId: string,
     pursuitId: string,

@@ -36,7 +36,7 @@ import type {
   TurnResult,
   TurnTrigger,
 } from '../outreach/types.ts';
-import type {AlertStore, IngestOutcome} from './alert.ts';
+import type {AlertMessage, AlertStore, IngestOutcome} from './alert.ts';
 import {agentsForOutreach} from './contacts.ts';
 import {matchListing} from './match.ts';
 import {MAX_ATTEMPTS, emailAddress, nextAttemptAt, routeMessage} from './routing.ts';
@@ -47,6 +47,7 @@ export type {MessageRoute};
 /** Event kinds this store writes. B renders the pursuit timeline from these. */
 export const EVENT = {
   created: 'created',
+  enriching: 'enriching',
   enriched: 'enriched',
   escalated: 'escalated',
   emailSent: 'email_sent',
@@ -685,6 +686,45 @@ export class PostgresStore implements WorkerStore, AlertStore {
 
       return {listingId: listingRow.id, userListingId, isMatch, isNew, pursuitId, needsEnrichment};
     });
+  }
+
+  async noteEnrichmentStarted(userId: string, pursuitId: string): Promise<void> {
+    const at = new Date();
+    await this.db.insert(pursuitEvents).values({
+      userId,
+      pursuitId,
+      type: EVENT.enriching,
+      payload: {status: 'started'},
+    });
+    await this.db.update(pursuits).set({updatedAt: at})
+      .where(and(eq(pursuits.id, pursuitId), eq(pursuits.userId, userId)));
+    this.log(`enriching pursuit ${pursuitId}`);
+  }
+
+  async listAlertMessageIds(userId: string): Promise<string[]> {
+    const rows = await this.db.select({id: processedMessages.gmailMessageId})
+      .from(processedMessages)
+      .where(and(
+        eq(processedMessages.userId, userId),
+        eq(processedMessages.route, 'alert'),
+      ))
+      .orderBy(desc(processedMessages.processedAt));
+    return rows.map(row => row.id);
+  }
+
+  async loadAlertMessage(messageId: string): Promise<AlertMessage | null> {
+    const gmail = await this.gmail().catch(() => null);
+    const raws = await loadMessages(gmail, [messageId]);
+    const raw = raws[0];
+    if (!raw) return null;
+    const parsed = parseMessage(raw);
+    return {
+      id: parsed.id || messageId,
+      from: parsed.from,
+      date: parsed.date,
+      subject: parsed.subject,
+      htmlBody: parsed.htmlBody,
+    };
   }
 
   async saveEnrichment(

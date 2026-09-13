@@ -13,6 +13,8 @@ From the repository root:
 npm run worker                  # poll continuously
 npm run worker -- --once        # a single cycle, then exit
 npm run worker:status           # backlog, last run, and blocked work
+npm run refresh-listings        # re-parse stored alert ids; enrich only new matches
+npm run dev:api                 # HTTP: /health and POST /refresh-listings (watch this terminal)
 ```
 
 `--once` is the dry cycle used for verification. Continuous mode polls every

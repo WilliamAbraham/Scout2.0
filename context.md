@@ -6,6 +6,12 @@ Updated 2026-09-13. Dashboard iteration started from `f6f8adf`; earlier source r
 
 `/dashboard` now reads the global `listings` table for every signed-in user. Match, dismiss, and pursuit rows still come from that user's `user_listings` (RLS unchanged). A listing with no overlay shows as **Not a fit** and has no conversation. Migration `0006_listings_select_authenticated` replaces `listings_select_own` so authenticated users can select StreetEasy facts; `scout_owns` remains required on every other tenant policy. A feed with no pursuits opens on **All listings**.
 
+## Agent transparency and refresh listings — 2026-09-13
+
+Implemented on `cursor/isolated`. The alert pipeline writes an `enriching` pursuit event before the provider runs. The live inbox projects that as **Finding contact** in Scout working and shows **Looking up broker contacts** on the timeline. **Refresh listings** (live inbox only) asks `POST /refresh-listings` on the backend API to re-parse stored StreetEasy alert ids, ingest new cards, and enrich only new matches. Status lines print as `[refresh] …` on the API process; the inbox polls while the action runs. Refresh inbox still only reloads persisted rows. The path does not send mail or start a full worker cycle. Existing deferred / `no_contact` pursuits are not re-enriched from this button.
+
+Verification: `npm test` passed 225 backend and 42 frontend tests, including enriching-before-provider, new-only refresh, Finding contact projection, and the signed-in refresh action. Both workspace typechecks passed. Browser: public `/` on the worktree frontend still loads the sample inbox and does not show Refresh listings. `/dashboard` still requires sign-in; the authenticated button click was not exercised. The worktree API is up on port 4001 (`POST /refresh-listings` rejects a missing user id with 400).
+
 ## Brokerage contact visibility — 2026-09-12
 
 Implemented on `codex/show-brokerage-contacts`. The alert summary previously discarded `contactRoutes`, and the dashboard ignored event contacts and never rendered snapshot phone numbers. Summaries now retain routes with evidence and original timestamps. The dashboard shows brokerage names in rows, email/phone research results in rows and details, and phone numbers from existing outreach snapshots. Only the latest completed enrichment event supplies recovered contacts; candidates and malformed payloads do not become contacts. Recovered details remain separate from outreach recipients and work-state calculations.

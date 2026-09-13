@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
-import { executePursuitCommand, executeSearchPause } from "@/lib/inbox-command";
+import {
+  executePursuitCommand,
+  executeRefreshListings,
+  executeSearchPause,
+} from "@/lib/inbox-command";
 import type { CommandActionState } from "@/lib/inbox-command";
 
 export async function submitPursuitCommand(
@@ -18,6 +22,14 @@ export async function submitPursuitCommand(
     ...(command === "supply_contact" || command === "close" ? { command } : {}),
     ...(typeof pursuitId === "string" ? { pursuitId } : {}),
   };
+}
+
+export async function refreshListings(
+  _previous: CommandActionState,
+): Promise<CommandActionState> {
+  const result = await executeRefreshListings(await createClient());
+  if (!result.error) revalidatePath("/dashboard");
+  return result;
 }
 
 export async function setSearchPaused(

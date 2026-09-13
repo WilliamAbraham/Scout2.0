@@ -221,6 +221,80 @@ export async function executePursuitCommand(
   }
 }
 
+export type RefreshApiResult = {
+  ok: boolean;
+  status: number;
+  body: Record<string, unknown>;
+};
+export type RefreshPoster = (userId: string) => Promise<RefreshApiResult>;
+
+export async function postRefreshListings(
+  userId: string,
+): Promise<RefreshApiResult> {
+  const url = process.env.SCOUT_API_URL ?? "http://localhost:4000";
+  try {
+    const response = await fetch(`${url}/refresh-listings`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId }),
+    });
+    const parsed: unknown = await response.json().catch(() => ({}));
+    const body =
+      parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>)
+        : {};
+    return { ok: response.ok, status: response.status, body };
+  } catch {
+    return {
+      ok: false,
+      status: 0,
+      body: {
+        error:
+          "Could not reach the Scout API. Start it with npm run dev:api and watch that terminal.",
+      },
+    };
+  }
+}
+
+export async function executeRefreshListings(
+  client: Client,
+  post: RefreshPoster = postRefreshListings,
+): Promise<CommandActionState> {
+  try {
+    const { data: auth, error: authError } = await client.auth.getClaims();
+    const userId = auth?.claims?.sub;
+    if (authError || typeof userId !== "string" || !userId)
+      return failed("Sign in to refresh listings.");
+    const result = await post(userId);
+    const apiError =
+      typeof result.body.error === "string" ? result.body.error : null;
+    if (!result.ok) {
+      return failed(
+        apiError ??
+          "Refresh listings failed. Check the API terminal for details.",
+      );
+    }
+    const newMatches = Number(result.body.newMatches);
+    const enriched = Number(result.body.enriched);
+    const messages = Number(result.body.messages);
+    if (!Number.isFinite(newMatches) || newMatches === 0) {
+      return saved(
+        Number.isFinite(messages)
+          ? `No new listings in ${messages} stored alert${messages === 1 ? "" : "s"}.`
+          : "No new listings in the stored alerts.",
+      );
+    }
+    return saved(
+      `Found ${newMatches} new match${newMatches === 1 ? "" : "es"} and started enrichment` +
+        (Number.isFinite(enriched) ? ` (${enriched} researched).` : "."),
+    );
+  } catch {
+    return failed(
+      "Could not refresh listings. Check the API terminal, then try again.",
+    );
+  }
+}
+
 export async function executeSearchPause(
   client: Client,
   form: FormData,

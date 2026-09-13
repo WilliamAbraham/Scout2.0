@@ -20,6 +20,7 @@
     "worker": "npm run worker -w backend",
     "enrich:agent": "node backend/scripts/enrichAgent.ts",
     "worker:status": "npm run worker:status -w backend",
+    "refresh-listings": "npm run refresh-listings -w backend",
     "alert": "npm run alert -w backend --",
     "outreach:reconsent": "npm run outreach:reconsent -w backend",
     "outreach:send-test": "npm run outreach:send-test -w backend"

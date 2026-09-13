@@ -389,6 +389,31 @@ test("stored closure needs a dead transition reason and a decision is not inferr
   assert.equal(groupFor(decision, "Closed"), null);
 });
 
+test("an in-flight enriching event is Finding contact, not recorded progress", () => {
+  const [item] = projectRecords([
+    base(
+      pursuit({
+        enriched_at: null,
+        contact_snapshot: null,
+        pursuit_events: [
+          { id: "created", type: "created", created_at: at, payload: {} },
+          {
+            id: "research",
+            type: "enriching",
+            created_at: "2026-09-13T14:00:00-04:00",
+            payload: { status: "started" },
+          },
+        ],
+      }),
+    ),
+  ]);
+  assert.equal(item.pursuit.work, "finding_contact");
+  assert.equal(statusLabel(item), "Finding contact");
+  assert.equal(groupFor(item, "Active"), "Scout working");
+  assert.match(item.pursuit.nextStep, /looking up broker contacts/i);
+  assert.equal(item.events.at(-1).title, "Looking up broker contacts");
+});
+
 test("listings without a user overlay still appear and do not count as a match", () => {
   const [item] = projectRecords(rowsFromListingFeed([{
     rental_id: "5155790",

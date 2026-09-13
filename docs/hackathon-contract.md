@@ -29,10 +29,13 @@ Server Actions use the request-scoped Supabase client and revalidate the session
 | Supply contact | Owned pursuit, matched, no_contact, no thread, finished enrichment, unchanged updated_at, no existing opening draft | Write snapshot and clear all three needs_human fields atomically; eligible for a future opening cycle |
 | Close pursuit | Owned non-dead pursuit, unchanged updated_at | Set stage=dead, clear next_follow_up_at; preserve contact, thread, blocker history and events |
 | Pause / resume | Owned existing profile, expected pause state and unchanged read version | Change only paused_at and updated_at; retries requesting an already-set state do not toggle it |
+| Refresh listings | Signed-in session; backend `POST /refresh-listings` | Re-parse stored StreetEasy alert ids, ingest new cards, enrich only new matches. Status lines print on the API process. Does not send mail or start a full worker cycle. |
 
 Supply-contact input is one email, optional name/evidence URL and an explicit authorization checkbox. The worker uses it directly; **there is no verification step after submission**. The JSON snapshot extends the existing shape with `providedBy:'user'` and `providedAt:<ISO timestamp>`, while retaining `tier`, `contacts` and `sourceUrl`. No fake evidence is generated. `enriched_at` is not rewritten as a new verification.
 
-There is no additional request-outreach flag. An unblocked matched row with usable contacts, no thread and no opening draft is already eligible. The dashboard does not start the worker, send mail, book a tour or insert resolved/stage-changed events. Pursuit events are read-only to dashboard users under RLS. A future worker consumer must define how resolution audit events are recorded.
+There is no additional request-outreach flag. An unblocked matched row with usable contacts, no thread and no opening draft is already eligible. The dashboard does not send mail, book a tour or insert resolved/stage-changed events. Refresh listings asks the backend API to re-parse stored alerts and may write `enriching` / `enriched` events through that worker-owned path. Other pursuit events remain read-only to dashboard users under RLS. A future worker consumer must define how resolution audit events are recorded.
+
+An in-flight `enriching` event with `enriched_at` still null projects as **Finding contact** in Scout working. Refresh inbox only reloads the page; Refresh listings triggers the stored-id reparse.
 
 The other five blockers have explicit UI placeholders: question answers, fitting slots, portal completion, missing documents and decisions. Their resolution storage/replay is not implemented by A. Updating search availability does not clear a current blocker. The dashboard leaves these requests in Needs you; closing the pursuit remains available.
 

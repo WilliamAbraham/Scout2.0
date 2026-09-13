@@ -71,6 +71,7 @@ function fakeStore(ingest: Partial<IngestOutcome> = {}): AlertStore & Recorded {
     async saveEnrichment(_userId, pursuitId, snapshot, summary) {
       recorded.saved.push({pursuitId, hasSnapshot: snapshot !== null, summary});
     },
+    async noteEnrichmentStarted() {},
     async noteEnrichmentDeferred(_userId, pursuitId, summary) {
       recorded.deferred.push({pursuitId, summary});
     },
@@ -115,6 +116,29 @@ test('enrichment contacts map to outreach agents', () => {
   const snapshot = contactSnapshotFromEnrichment(enrichmentReady());
   assert.ok(snapshot);
   assert.deepEqual(agentsForOutreach(snapshot!), [{name: 'Ava Agent', email: 'ava@broker.example', role: 'primary'}]);
+});
+
+test('processListingAlert records enriching before the provider runs', async () => {
+  const order: string[] = [];
+  const store = fakeStore();
+  const started: string[] = [];
+  const outcome = await processListingAlert('user-1', source, listing, {
+    store: {
+      ...store,
+      async noteEnrichmentStarted(_userId, pursuitId) {
+        started.push(pursuitId);
+        order.push('started');
+      },
+    },
+    enrich: async () => {
+      order.push('enrich');
+      return enrichmentReady();
+    },
+  });
+
+  assert.equal(outcome.status, 'ready');
+  assert.deepEqual(order, ['started', 'enrich']);
+  assert.deepEqual(started, ['pursuit-1']);
 });
 
 test('processListingAlert persists the listing, enriches, and saves the contact snapshot', async () => {

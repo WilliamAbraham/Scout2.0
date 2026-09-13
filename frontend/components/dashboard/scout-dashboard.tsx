@@ -54,7 +54,11 @@ import {
   LiveClosePursuitControl,
 } from "./live-pursuit-controls";
 import { SearchPauseControl } from "./search-pause-control";
-import { setSearchPaused, submitPursuitCommand } from "@/app/actions/pursuits";
+import {
+  refreshListings,
+  setSearchPaused,
+  submitPursuitCommand,
+} from "@/app/actions/pursuits";
 import type { CommandActionState } from "@/lib/inbox-command";
 import {
   profileSummary,
@@ -153,15 +157,23 @@ export function ScoutDashboard({
     initialCommandState,
   );
   const [refreshPending, startRefresh] = useTransition();
+  const [listingsRefreshState, listingsRefreshAction, listingsRefreshPending] =
+    useActionState(refreshListings, initialCommandState);
   const [notice, setNotice] = useState("");
   const [previous, setPrevious] = useState<Record<string, InboxListing>>({});
   const listHeading = useRef<HTMLHeadingElement>(null);
   const listings = mode === "live" ? initialListings : demoListingState;
   const paused = mode === "live" ? account.paused : demoPaused;
-  const controlsDisabled = pursuitPending || pausePending || refreshPending;
+  const controlsDisabled =
+    pursuitPending || pausePending || refreshPending || listingsRefreshPending;
   const refreshInbox = useCallback(() => {
     startRefresh(() => router.refresh());
   }, [router]);
+  useEffect(() => {
+    if (!listingsRefreshPending) return;
+    const poll = setInterval(() => router.refresh(), 2000);
+    return () => clearInterval(poll);
+  }, [listingsRefreshPending, router]);
   useEffect(() => {
     if (!notice) return;
     const timeout = setTimeout(() => setNotice(""), 5000);
@@ -670,14 +682,28 @@ export function ScoutDashboard({
                 : "Persisted records · Worker updates arrive between cycles"}
             </span>
             {mode === "live" && (
-              <button
-                className={styles.refreshButton}
-                onClick={refreshInbox}
-                disabled={controlsDisabled}
-              >
-                <RefreshCw aria-hidden="true" />
-                {refreshPending ? "Refreshing…" : "Refresh inbox"}
-              </button>
+              <>
+                <button
+                  className={styles.refreshButton}
+                  onClick={refreshInbox}
+                  disabled={controlsDisabled}
+                >
+                  <RefreshCw aria-hidden="true" />
+                  {refreshPending ? "Refreshing…" : "Refresh inbox"}
+                </button>
+                <form action={listingsRefreshAction}>
+                  <button
+                    className={styles.refreshButton}
+                    type="submit"
+                    disabled={controlsDisabled}
+                  >
+                    <Search aria-hidden="true" />
+                    {listingsRefreshPending
+                      ? "Refreshing listings…"
+                      : "Refresh listings"}
+                  </button>
+                </form>
+              </>
             )}
             <span>
               {listings.length} received · {active.length} active
@@ -812,10 +838,19 @@ export function ScoutDashboard({
             state={pauseState}
             onRefresh={refreshInbox}
           />
+          <MutationResult
+            label="Listings refresh"
+            state={listingsRefreshState}
+            onRefresh={refreshInbox}
+          />
         </div>
       )}
       <p className={styles.notice} role="status">
-        {notice}
+        {listingsRefreshPending
+          ? "Re-parsing stored alerts and starting enrichment. Watch the API terminal for status."
+          : (listingsRefreshState.error ??
+            listingsRefreshState.message ??
+            notice)}
       </p>
     </div>
   );

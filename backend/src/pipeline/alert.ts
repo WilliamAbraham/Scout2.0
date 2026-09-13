@@ -36,6 +36,8 @@ export type AlertStore = {
     source: {messageId: string; receivedAt: Date},
     listing: GmailListing,
   ): Promise<IngestOutcome>;
+  /** Written before a paid/provider call so the inbox can show work in flight. */
+  noteEnrichmentStarted(userId: string, pursuitId: string): Promise<void>;
   saveEnrichment(
     userId: string,
     pursuitId: string,
@@ -48,6 +50,11 @@ export type AlertStore = {
     pursuitId: string,
     summary: Record<string, unknown>,
   ): Promise<void>;
+};
+
+export type ProcessListingOptions = {
+  /** Worker default: enrich any unenriched match. Refresh uses `new` only. */
+  enrichWhen?: 'needed' | 'new';
 };
 
 export type AlertPipelineDeps = {
@@ -66,7 +73,7 @@ export type AlertListingOutcome =
    * and nothing is paid for twice in the same cycle.
    */
   | {rentalId: string; status: 'deferred'; pursuitId: string; reason: string; detail: string}
-  | {rentalId: string; status: 'skipped'; reason: 'not_matched' | 'already_enriched' | 'missing_html'}
+  | {rentalId: string; status: 'skipped'; reason: 'not_matched' | 'already_enriched' | 'missing_html' | 'not_new'}
   | {rentalId: string; status: 'error'; reason: string};
 
 export type AlertMessageResult = {
@@ -139,6 +146,7 @@ export async function processListingAlert(
   source: {messageId: string; receivedAt: Date},
   listing: GmailListing,
   deps: AlertPipelineDeps,
+  options: ProcessListingOptions = {},
 ): Promise<AlertListingOutcome> {
   const {rentalId} = listing;
   let pursuitId: string | null = null;
@@ -148,10 +156,14 @@ export async function processListingAlert(
     if (!ingested.isMatch || !pursuitId) {
       return {rentalId, status: 'skipped', reason: 'not_matched'};
     }
+    if (options.enrichWhen === 'new' && !ingested.isNew) {
+      return {rentalId, status: 'skipped', reason: 'not_new'};
+    }
     if (!ingested.needsEnrichment) {
       return {rentalId, status: 'skipped', reason: 'already_enriched'};
     }
 
+    await deps.store.noteEnrichmentStarted(userId, pursuitId);
     const enrichment = await deps.enrich(gmailListingToEmailInput(listing));
     const summary = summarizeEnrichment(enrichment);
     const failure = classifyEnrichment(enrichment);
