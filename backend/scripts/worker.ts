@@ -58,6 +58,7 @@ const store = new PostgresStore({
   dryRun: !live,
   catchUpDays: Number(process.env.SCOUT_CATCH_UP_DAYS ?? 2),
   maxMessagesPerSync: Number(process.env.SCOUT_MESSAGES_PER_CYCLE ?? 25),
+  ...(process.env.SCOUT_RENTER_NAME ? {renterName: process.env.SCOUT_RENTER_NAME} : {}),
   ...(process.env.SCOUT_MAILBOX_QUERY ? {extraQuery: process.env.SCOUT_MAILBOX_QUERY} : {}),
   log,
 });

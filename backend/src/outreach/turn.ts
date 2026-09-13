@@ -15,15 +15,26 @@ import {
   SECOND_FOLLOW_UP_DAYS,
 } from './types.ts';
 
+// The renter's identity is the From header plus a signature appended after the
+// model returns, so the model is told not to write one. Left to itself it emits
+// "[Your Name]", which reaches the broker as a visibly unfinished draft.
+const NO_PLACEHOLDERS = [
+  'Return only the email body: no Subject line, no headers.',
+  'Never write a placeholder such as [Your Name] or [Your Contact Information],',
+  'and never end with a sign-off or signature name — one is appended for you.',
+].join(' ');
+
 const OPEN_SYSTEM = [
   'Write one short tour-request email from the renter.',
   'Ask for a tour. Use the profile availability and preferences.',
-  'Do not invent facts. Return only the email body.',
+  'Do not invent facts.',
+  NO_PLACEHOLDERS,
 ].join(' ');
 
 const FOLLOW_UP_SYSTEM = [
   'Write a brief, polite follow-up on an unanswered tour request.',
-  'Reference the same apartment. Do not invent facts. Return only the email body.',
+  'Reference the same apartment. Do not invent facts.',
+  NO_PLACEHOLDERS,
 ].join(' ');
 
 const REPLY_SYSTEM = [
@@ -138,6 +149,22 @@ function asReason(value: unknown): NeedsHumanReason | null {
   return NEEDS_HUMAN_REASONS.find(reason => reason === value) ?? null;
 }
 
+/**
+ * Remove anything the model still produced in place of a signature, then append
+ * the renter's own. A model-written sign-off is a guess at the user's identity;
+ * a configured one is either a real name or nothing.
+ */
+export function signOff(body: string, renterName: string | null | undefined): string {
+  const cleaned = body
+    .replace(/^\s*subject:.*$/im, '')
+    .replace(/^\s*(?:best|kind|warm)\s+(?:regards|wishes)\b[\s\S]*$/im, '')
+    .replace(/^\s*(?:sincerely|thanks|thank you|cheers)\s*,\s*$[\s\S]*$/im, '')
+    .replace(/\[[^\]\n]{2,60}\]/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+  return renterName ? `${cleaned}\n\nBest regards,\n${renterName}` : cleaned;
+}
+
 async function composeAndSend(
   input: TurnInput,
   ports: OutreachPorts,
@@ -151,10 +178,11 @@ async function composeAndSend(
     user: pursuitContext(input.pursuit),
     tools: [],
   });
-  const body = composed.text?.trim() ?? '';
-  if (!body) {
+  const drafted = composed.text?.trim() ?? '';
+  if (!drafted) {
     return {empty: true};
   }
+  const body = signOff(drafted, input.renterName);
   const message = {
     to: toCc.to,
     cc: toCc.cc,

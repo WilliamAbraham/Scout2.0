@@ -60,6 +60,8 @@ export type TurnInput = {
   now?: Date | undefined;
   paused?: boolean | undefined;
   mailboxEmail?: string | null | undefined;
+  /** How the renter signs off. Absent means no signature block at all. */
+  renterName?: string | null | undefined;
 };
 
 export type ToolName =

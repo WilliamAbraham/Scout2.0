@@ -12,7 +12,24 @@ function mapRole(role: string | null): ListingAgent['role'] {
 export function contactSnapshotFromEnrichment(result: EnrichmentResult): ContactSnapshot | null {
   const withEmail = result.agents.filter(agent => agent.email);
   if (withEmail.length === 0) {
-    return null;
+    // No individual mailbox, but enrichment may still have verified the firm's
+    // own leasing or office route. That is a real way to reach whoever holds
+    // the listing, and `tier` records that it is the brokerage, not the agent.
+    const routes = result.contactRoutes.filter(route => route.email);
+    if (routes.length === 0) {
+      return null;
+    }
+    return {
+      tier: routes[0]!.kind === 'leasing_team' ? 'building_leasing' : 'brokerage',
+      sourceUrl: routes[0]!.sourceUrls[0] ?? result.brokerageUrl,
+      contacts: routes.map(route => ({
+        name: route.name,
+        email: route.email,
+        phone: route.phone,
+        profileUrl: route.sourceUrls[0] ?? null,
+        role: 'unspecified' as const,
+      })),
+    };
   }
 
   let tier: ContactSnapshot['tier'];

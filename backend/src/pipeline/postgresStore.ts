@@ -68,6 +68,8 @@ export type PostgresStoreOptions = {
    * send. The default until Gmail sending is real; the worker script flips it.
    */
   dryRun: boolean;
+  /** Signs outgoing mail. Without it the agent sends no signature block. */
+  renterName?: string | null;
   /** Extra Gmail search terms for a catch-up sync, e.g. `-category:promotions`. */
   extraQuery?: string | undefined;
   /** Window a first run scans, in days. */
@@ -706,6 +708,14 @@ export class PostgresStore implements WorkerStore, AlertStore {
         }),
       }).where(and(eq(pursuits.id, pursuitId), eq(pursuits.userId, userId)));
 
+      // A pursuit parked for want of a contact is unblocked by finding one, so
+      // a re-run after an enrichment improvement clears its own escalation.
+      // Any other blocker is the owner's to resolve and is left alone.
+      if (snapshot) {
+        await tx.update(pursuits).set({needsHumanReason: null, needsHumanNote: null, needsHumanAt: null})
+          .where(and(eq(pursuits.id, pursuitId), eq(pursuits.userId, userId), eq(pursuits.needsHumanReason, 'no_contact')));
+      }
+
       await tx.insert(pursuitEvents).values({userId, pursuitId, type: EVENT.enriched, payload: summary});
       if (!snapshot) {
         await tx.insert(pursuitEvents).values({
@@ -788,6 +798,7 @@ export class PostgresStore implements WorkerStore, AlertStore {
       alreadyProcessed: false,
       sendsToday: 0,
       sendCap: row.profile?.dailySendCap ?? 10,
+      renterName: this.options.renterName ?? null,
     };
   }
 
