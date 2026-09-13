@@ -13,7 +13,7 @@
  * often enough that the free path is not worth the ambiguity it introduces.
  * Every read here goes through Firecrawl.
  */
-import {normalizeAddress, normalizeUnit} from './service.ts';
+import {brokerageIdentity, normalizeAddress, normalizeUnit} from './service.ts';
 import type {EmailListing} from './service.ts';
 
 export interface AgentContact {
@@ -160,10 +160,18 @@ function personalEmail(email: string, name: string): boolean {
  * A result only counts when its text actually names them, so one agent's page
  * cannot supply another's address.
  */
-async function contactFor(agent: AgentContact, options: LookupOptions): Promise<void> {
-  const brokerage = agent.brokerage ?? '';
-  const results = await tavily(`"${agent.name}" ${brokerage} real estate agent email phone contact`, options);
-  const named = results.filter(result => normalizeAddress(`${result.title} ${result.text}`).includes(normalizeAddress(agent.name)));
+async function contactFor(agent: AgentContact, options: LookupOptions): Promise<{skipped?: string}> {
+  // Naming the person is not identifying them. "Daniel Ramirez" is an agent at
+  // this brokerage and also at half a dozen others across the country, so a
+  // page has to place him at THIS firm before its phone number is his.
+  const firm = brokerageIdentity(agent.brokerage ?? '');
+  if (!firm) return {skipped: `no brokerage to confirm ${agent.name} against`};
+
+  const results = await tavily(`"${agent.name}" ${agent.brokerage} real estate agent email phone contact`, options);
+  const named = results.filter(result => {
+    const text = normalizeAddress(`${result.title} ${result.text}`);
+    return text.includes(normalizeAddress(agent.name)) && text.includes(firm);
+  });
 
   for (const result of named) {
     // Only what sits near their name. A directory page lists many people, and
@@ -181,8 +189,9 @@ async function contactFor(agent: AgentContact, options: LookupOptions): Promise<
     agent.email ??= email ?? null;
     agent.phone ??= phone;
     agent.context ??= compact(near) || null;
-    if (agent.email) return;
+    if (agent.email) return {};
   }
+  return {};
 }
 
 /**
@@ -239,7 +248,8 @@ export async function findListingAgents(input: EmailListing, options: LookupOpti
   const reachable = agents.slice(0, options.maxAgents ?? 3);
   for (const agent of reachable) {
     try {
-      await contactFor(agent, options);
+      const outcome = await contactFor(agent, options);
+      if (outcome.skipped) notes.push(`Did not search for a contact: ${outcome.skipped}`);
     } catch (error) {
       notes.push(`No contact found for ${agent.name}: ${error instanceof Error ? error.message : String(error)}`);
     }

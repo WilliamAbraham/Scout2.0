@@ -46,7 +46,7 @@ function providers(options: {listing?: unknown; search?: unknown[]} = {}) {
 test('the listing names its agent and Tavily supplies a personal address', async () => {
   const {fetcher, calls} = providers({search: [{
     url: 'https://findrealestate.com/team/fatma-kara', title: 'Fatma Kara',
-    content: 'Fatma Kara, Licensed Real Estate Salesperson. Reach her at fatma@findrealestate.com or 212-555-0134.',
+    content: 'Fatma Kara, Licensed Real Estate Salesperson at FIND Real Estate. Reach her at fatma@findrealestate.com or 212-555-0134.',
   }]});
   const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
 
@@ -61,11 +61,23 @@ test('the listing names its agent and Tavily supplies a personal address', async
 test('a firm mailbox is never returned as the agent\'s own address', async () => {
   const {fetcher} = providers({search: [{
     url: 'https://findrealestate.com/contact', title: 'Fatma Kara at FIND Real Estate',
-    content: 'Fatma Kara. General enquiries: hello@findrealestate.com.',
+    content: 'Fatma Kara at FIND Real Estate. General enquiries: hello@findrealestate.com.',
   }]});
   const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
   assert.equal(found.agents[0]?.email, null);
   assert.match(found.notes.join(' '), /No email found for Fatma Kara/);
+});
+
+test('a namesake at another firm is not this listing\'s agent', async () => {
+  // "Daniel Ramirez" is an agent at this brokerage and at several others; a
+  // page naming him without naming the firm is somebody else entirely.
+  const {fetcher} = providers({search: [{
+    url: 'https://theagencyre.com/agent/fatma-kara', title: 'Fatma Kara - Real Estate Agent',
+    content: 'Fatma Kara. Real Estate Agent at The Agency. +1 (240) 713-1490. fatma@theagencyre.com',
+  }]});
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.equal(found.agents[0]?.email, null);
+  assert.equal(found.agents[0]?.phone, null);
 });
 
 test('a search result that never names the agent supplies nothing', async () => {
