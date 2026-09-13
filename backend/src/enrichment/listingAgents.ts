@@ -6,14 +6,16 @@
  *    person holding a listing; a brokerage's own site carries the exact unit
  *    only occasionally, and the wider web reports the firm rather than the
  *    agent ("Listing by Voro New York").
- * 2. Tavily searches for that person at that brokerage, and their email and
- *    phone are read out of the results.
+ * 2. Search for that person at that firm (not the apartment). Tavily snippets
+ *    are read first; if they omit the email, official-looking profile pages
+ *    are opened through Firecrawl. Tavily HTTP failures fall back to Firecrawl
+ *    search. A page must name this person at this firm — not this unit.
  *
  * StreetEasy is never fetched directly: it answers plain requests with 403
  * often enough that the free path is not worth the ambiguity it introduces.
  * Every read here goes through Firecrawl.
  */
-import {brokerageIdentity, mentionsStreetAddress, normalizeAddress, normalizeUnit} from './service.ts';
+import {brokerageIdentity, domainMatchesBrokerage, mentionsStreetAddress, normalizeAddress, normalizeUnit} from './service.ts';
 import type {EmailListing} from './service.ts';
 
 export interface AgentContact {
@@ -50,9 +52,16 @@ export interface LookupOptions {
 
 const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const PHONE = /(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g;
+const AGGREGATOR = /(?:renthop|linecity|datanyze|rocketreach|zillow|cityrealty|homes\.com|realtor\.com|linkedin|facebook|trulia|streeteasy)\./i;
+const PROFILE_PATH = /\/(?:agents?|team|profile|our-team|people|staff|brokers?|managers?)\b/i;
+const FIRM_NOISE = new Set(['real', 'realty', 'realtors', 'estate', 'estates', 'property', 'properties',
+  'group', 'management', 'company', 'partners', 'associates', 'homes', 'home', 'apartments', 'rentals',
+  'leasing', 'york', 'city', 'nyc', 'brokerage', 'residential', 'international', 'global', 'services']);
 const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 const isObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
+
+type SearchHit = {url: string; title: string; text: string};
 
 /**
  * One apartment's own page. `/rental/<id>` is what an alert carries and it
@@ -128,7 +137,7 @@ async function firecrawl(url: string, prompt: string, schema: unknown, options: 
 }
 
 /** Web search with page text, so a contact can be read without another fetch. */
-async function tavily(query: string, options: LookupOptions) {
+async function tavily(query: string, options: LookupOptions): Promise<SearchHit[]> {
   options.log?.(`tavily search ${query}`);
   const body = await post('https://api.tavily.com/search', options.tavilyKey, {
     query,
@@ -146,6 +155,47 @@ async function tavily(query: string, options: LookupOptions) {
     : []);
 }
 
+async function firecrawlSearch(query: string, options: LookupOptions): Promise<SearchHit[]> {
+  if (!options.firecrawlKey) return [];
+  options.log?.(`firecrawl search ${query}`);
+  const body = await post('https://api.firecrawl.dev/v2/search', options.firecrawlKey, {
+    query, limit: 5,
+  }, options);
+  const data = isObject(body.data) ? body.data : {};
+  const rows = Array.isArray(data.web) ? data.web : [];
+  return rows.flatMap(row => isObject(row) && typeof row.url === 'string'
+    ? [{
+      url: row.url,
+      title: typeof row.title === 'string' ? row.title : '',
+      text: [row.description, row.markdown].filter(value => typeof value === 'string').join('\n'),
+    }]
+    : []);
+}
+
+/** Tavily first; Firecrawl search when Tavily is missing or over quota. */
+async function searchPeople(
+  query: string,
+  options: LookupOptions,
+): Promise<{hits: SearchHit[]; via: 'tavily' | 'firecrawl'}> {
+  if (options.tavilyKey) {
+    try {
+      return {hits: await tavily(query, options), via: 'tavily'};
+    } catch (error) {
+      options.log?.(`tavily failed (${error instanceof Error ? error.message : String(error)}); trying Firecrawl search`);
+    }
+  }
+  return {hits: await firecrawlSearch(query, options), via: 'firecrawl'};
+}
+
+async function scrapeProfile(url: string, options: LookupOptions): Promise<string> {
+  options.log?.(`firecrawl profile ${url}`);
+  const body = await post('https://api.firecrawl.dev/v2/scrape', options.firecrawlKey, {
+    url, formats: ['markdown'], onlyMainContent: false,
+  }, options);
+  const data = isObject(body.data) ? body.data : {};
+  return typeof data.markdown === 'string' ? data.markdown : '';
+}
+
 /** Reject the firm's own `info@` when it is offered as a person's address. */
 function personalEmail(email: string, name: string): boolean {
   const local = email.split('@')[0]!.toLowerCase().replace(/[^a-z]/g, '');
@@ -155,19 +205,103 @@ function personalEmail(email: string, name: string): boolean {
     || (first.length >= 1 && last.length >= 3 && local === `${first[0]!}${last}`);
 }
 
+/** Distinctive firm word for people search: "Voro New York" → "Voro". */
+function firmSearchToken(brokerage: string): string {
+  const words = brokerageIdentity(brokerage).split(' ').filter(Boolean);
+  const token = words.find(word => word.length >= 4 && !FIRM_NOISE.has(word))
+    ?? words.find(word => !FIRM_NOISE.has(word))
+    ?? words[0];
+  if (!token) return compact(brokerage);
+  return compact(brokerage).split(/\s+/).find(word => normalizeAddress(word) === token) ?? token;
+}
+
+/** "VORO NYC" still names the StreetEasy firm "Voro New York". */
+function mentionsFirm(text: string, brokerage: string): boolean {
+  const firm = brokerageIdentity(brokerage);
+  const haystack = normalizeAddress(text);
+  if (!firm) return false;
+  if (haystack.includes(firm)) return true;
+  return firm.split(' ').some(word => word.length >= 4 && !FIRM_NOISE.has(word) && haystack.includes(word));
+}
+
+function profilePriority(url: string, brokerage: string | null): number {
+  if (AGGREGATOR.test(url)) return -2;
+  let score = 0;
+  if (brokerage && domainMatchesBrokerage(url, brokerage)) score += 3;
+  if (PROFILE_PATH.test(url)) score += 2;
+  return score;
+}
+
+function readContact(text: string, name: string): {email: string | null; phone: string | null; near: string} {
+  const at = normalizeAddress(text).indexOf(normalizeAddress(name));
+  const near = at < 0 ? '' : text.slice(Math.max(0, at - 300), at + 1200);
+  const emails = [...new Set(near.match(EMAIL) ?? [])].map(value => value.toLowerCase())
+    .filter(value => !/\.(png|jpe?g|gif|webp|svg)$/.test(value));
+  return {
+    email: emails.find(value => personalEmail(value, name)) ?? null,
+    phone: (near.match(PHONE) ?? [])[0] ?? null,
+    near,
+  };
+}
+
+function applyHit(
+  agent: AgentContact,
+  url: string,
+  title: string,
+  text: string,
+  corroborate: (haystack: string) => boolean,
+): boolean {
+  const haystack = normalizeAddress(`${title} ${text}`);
+  if (!haystack.includes(normalizeAddress(agent.name)) || !corroborate(haystack)) return false;
+  const {email, phone, near} = readContact(text, agent.name);
+  if (!email && !phone) return false;
+  agent.sources.push(url);
+  agent.email ??= email;
+  agent.phone ??= phone;
+  agent.context ??= compact(near) || null;
+  return true;
+}
+
+/** Open at most two official-looking pages; aggregators are never fetched. */
+async function applyProfiles(
+  agent: AgentContact,
+  hits: SearchHit[],
+  options: LookupOptions,
+): Promise<boolean> {
+  if (!options.firecrawlKey || !agent.brokerage) return false;
+  const ranked = [...hits]
+    .filter(hit => profilePriority(hit.url, agent.brokerage) > 0)
+    .sort((a, b) => profilePriority(b.url, agent.brokerage) - profilePriority(a.url, agent.brokerage))
+    .slice(0, 2);
+  for (const hit of ranked) {
+    if (agent.sources.includes(hit.url)) continue;
+    let markdown = '';
+    try {markdown = await scrapeProfile(hit.url, options);} catch {continue;}
+    if (applyHit(agent, hit.url, hit.title, markdown, haystack => mentionsFirm(`${hit.url} ${haystack}`, agent.brokerage!))
+        && agent.email) return true;
+  }
+  return !!agent.email;
+}
+
 /**
  * The agent's contact details.
  *
- * Naming someone is not identifying them: "Daniel Ramirez" is a salesperson at
- * this brokerage and at half a dozen firms across the country, and taking the
- * first same-named page hands back a stranger's phone number. So a result has
- * to corroborate. Two passes, because either signal alone misses:
+ * StreetEasy already named this person on this listing. Search is for their
+ * mailbox at this firm, not for the apartment. Naming someone is still not
+ * identifying them: "Daniel Ramirez" is a salesperson at this brokerage and
+ * at half a dozen firms across the country. A snippet or opened profile has
+ * to name this person at this firm. A namesake at another office is refused
+ * even when the page never mentions the unit.
+ *
+ * Two snippet passes, because either signal alone misses:
  *
  * - The firm. Strongest, and tried first.
  * - The market. Needed because a broker directory often lists an agent under a
  *   different entity than the one crediting the listing — this agent appears
  *   as "Wayfinderpm" on LoopNet and "OGI Management" on StreetEasy — while a
  *   namesake in another state names neither the firm nor the city.
+ *
+ * Opened profiles always require the firm, not just the market.
  */
 async function contactFor(agent: AgentContact, city: string, options: LookupOptions): Promise<{skipped?: string; note?: string}> {
   const firm = brokerageIdentity(agent.brokerage ?? '');
@@ -175,7 +309,12 @@ async function contactFor(agent: AgentContact, city: string, options: LookupOpti
   if (!firm && !market) return {skipped: `nothing to confirm ${agent.name} against`};
 
   const passes: Array<{query: string; corroborate: (text: string) => boolean; note?: string}> = [];
-  if (firm) passes.push({query: `"${agent.name}" ${agent.brokerage}`, corroborate: text => text.includes(firm)});
+  if (firm) {
+    passes.push({
+      query: `${agent.name} ${firmSearchToken(agent.brokerage ?? '')}`,
+      corroborate: text => text.includes(firm),
+    });
+  }
   if (market) {
     passes.push({
       query: `"${agent.name}" ${agent.role ?? 'real estate salesperson'} ${city}`,
@@ -185,30 +324,22 @@ async function contactFor(agent: AgentContact, city: string, options: LookupOpti
   }
 
   for (const pass of passes) {
-    const results = await tavily(pass.query, options);
+    const {hits: results, via} = await searchPeople(pass.query, options);
     for (const result of results) {
-      const haystack = normalizeAddress(`${result.title} ${result.text}`);
-      if (!haystack.includes(normalizeAddress(agent.name)) || !pass.corroborate(haystack)) continue;
-
-      // Only what sits near their name. A directory page lists many people, and
-      // the first phone number on it belongs to whoever is at the top. A profile
-      // still needs room for a long bio before the sidebar numbers (Luke
-      // Joyce's REAL NY phones sit ~680 characters after his name).
-      const at = normalizeAddress(result.text).indexOf(normalizeAddress(agent.name));
-      const near = result.text.slice(Math.max(0, at - 300), at + 1200);
-      const emails = [...new Set(near.match(EMAIL) ?? [])].map(value => value.toLowerCase())
-        .filter(value => !/\.(png|jpe?g|gif|webp|svg)$/.test(value));
-      const email = emails.find(value => personalEmail(value, agent.name));
-      const phone = (near.match(PHONE) ?? [])[0] ?? null;
-      if (!email && !phone) continue;
-
-      agent.sources.push(result.url);
-      agent.email ??= email ?? null;
-      agent.phone ??= phone;
-      agent.context ??= compact(near) || null;
-      if (agent.email) return pass.note ? {note: pass.note} : {};
+      if (applyHit(agent, result.url, result.title, result.text, pass.corroborate) && agent.email) {
+        return pass.note ? {note: pass.note} : {};
+      }
+    }
+    if (await applyProfiles(agent, results, options) && agent.email) {
+      return pass.note ? {note: pass.note} : {};
     }
     if (agent.email || agent.phone) return pass.note ? {note: pass.note} : {};
+    if (via === 'tavily' && options.firecrawlKey && !results.some(hit => profilePriority(hit.url, agent.brokerage) > 0)) {
+      const extra = await firecrawlSearch(pass.query, options);
+      if (await applyProfiles(agent, extra, options) && agent.email) {
+        return pass.note ? {note: pass.note} : {};
+      }
+    }
   }
   return {};
 }

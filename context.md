@@ -14,6 +14,10 @@ The worker always uses `enrichWithAgent` via `enrichForPipeline`. At `SCOUT_ENRI
 
 Tavily contact text is read 300 characters before the name and 1200 after (was 600). A profile that prints phones in a sidebar after a long bio — Luke Joyce on REAL NY, ~680 characters later — is kept; a namesake page that never names the firm is still refused.
 
+`findListingAgents` now searches the person plus the distinctive firm word (`Tom Gur Voro`), not the apartment. When Tavily snippets omit the email, official-looking profile URLs (`/agents`, `/team`, the firm's host) are opened through Firecrawl. Tavily HTTP 432 falls back to Firecrawl search. Opened profiles must name this person at this firm; a namesake at another office is refused even when the unit is absent. Cost is a few scrapes per listing, not a directory walk.
+
+A 2026-09-13 Tom Gur / Voro replay with that query unblocked the parked listings. Tavily was still HTTP 432; Firecrawl search `Tom Gur Voro` plus a LineCity profile read returned `tom@voronyc.com`. Two listings hit Firecrawl HTTP 429 during the same batch and reused that same-session address.
+
 ## Brokerage contact visibility — 2026-09-12
 
 Default-agent switch: `enrichWithAgent()` is the only enrichment engine. `worker.ts`, `runAlert.ts`, `enrich:sample`, `reenrich` and `npm run enrich` all use `agentResultForPipeline`. The worker pins enrichment to Mini independently of the outreach model and uses `SCOUT_ENRICHMENT_BUDGET_USD` (default zero, shared for the process lifetime; `$0` is the StreetEasy + Tavily fallback). No worker restart or resumption was performed; the user's paused state remains intact.

@@ -8,7 +8,7 @@ The complete split is [Claude: ingestion and worker](Claude.md), **Codex: enrich
 
 ## Starting point
 
-`backend/src/enrichment/agent.ts` (`enrichWithAgent`) is the only enrichment engine. The worker, one-email runner and CLIs call it through `enrichForPipeline`. At budget `$0` it uses StreetEasy + Tavily and reviewed direct adapters; a positive `SCOUT_ENRICHMENT_BUDGET_USD` pays for OpenRouter discovery. The agent independently identified Fatma Kara for 620 East 6th Street #9A; that run cost $0.003407284, but her personal email and phone remain unverified. One successful broker identification does not establish general recall or an outreach-ready contact.
+`backend/src/enrichment/agent.ts` (`enrichWithAgent`) is the only enrichment engine. The worker, one-email runner and CLIs call it through `enrichForPipeline`. At budget `$0` it uses StreetEasy + people search and reviewed direct adapters; a positive `SCOUT_ENRICHMENT_BUDGET_USD` pays for OpenRouter discovery. The agent independently identified Fatma Kara for 620 East 6th Street #9A; that run cost $0.003407284, but her personal email and phone remain unverified. One successful broker identification does not establish general recall or an outreach-ready contact.
 
 Local uncommitted work observed on September 12 includes `backend/scripts/runAlert.ts` and `backend/src/enrichment/agentContacts.ts`. Coordinate with their author and reuse reviewed work; do not overwrite it or assume it is merged.
 

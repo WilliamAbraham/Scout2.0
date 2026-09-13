@@ -23,21 +23,31 @@ const roster = {
  * provider endpoints rather than the listing host. Extraction happens inside
  * Firecrawl; what is under test here is verification and mapping.
  */
-function providers(options: {listing?: unknown; search?: unknown[]} = {}) {
+function providers(options: {
+  listing?: unknown;
+  search?: unknown[];
+  tavilyStatus?: number;
+  firecrawlSearch?: Array<{url: string; title?: string; description?: string}>;
+  profiles?: Record<string, string>;
+} = {}) {
   const calls: string[] = [];
   const fetcher: typeof fetch = async (target, init) => {
     const url = String(target);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     if (url.includes('api.firecrawl.dev/v2/search')) {
       calls.push(`search:${String(body.query)}`);
-      return Response.json({success: true, data: {web: []}});
+      return Response.json({success: true, data: {web: options.firecrawlSearch ?? []}});
     }
     if (url.startsWith('https://api.firecrawl.dev')) {
-      calls.push(String(body.url));
+      const page = String(body.url);
+      calls.push(page);
+      const profile = options.profiles?.[page];
+      if (profile) return Response.json({success: true, data: {markdown: profile}});
       return Response.json({success: true, data: {markdown: 'Listed by', json: options.listing ?? roster}});
     }
     if (url.startsWith('https://api.tavily.com')) {
       calls.push(`search:${String(body.query)}`);
+      if (options.tavilyStatus) return new Response('', {status: options.tavilyStatus});
       return Response.json({results: options.search ?? []});
     }
     throw new Error(`Unexpected request to ${url}`);
@@ -57,7 +67,7 @@ test('the listing names its agent and Tavily supplies a personal address', async
   assert.equal(found.agents[0]?.phone, '212-555-0134');
   assert.equal(found.listingUrl, 'https://streeteasy.com/rental/123');
   assert.equal(calls[0], 'https://streeteasy.com/rental/123');
-  assert.match(calls[1]!, /^search:"Fatma Kara" FIND Real Estate/);
+  assert.equal(calls[1], 'search:Fatma Kara FIND');
 });
 
 test('a firm mailbox is never returned as the agent\'s own address', async () => {
@@ -111,6 +121,84 @@ test('a profile that prints the phone after a long bio still counts', async () =
   assert.equal(found.agents[0]?.email, 'fatma@findrealestate.com');
 });
 
+test('a firm profile is opened when search snippets omit the email', async () => {
+  const profile = 'https://findrealestate.com/agents/fatma-kara';
+  const {fetcher, calls} = providers({
+    search: [{
+      url: 'https://www.renthop.com/managers/Fatma-Kara', title: 'Fatma Kara',
+      content: 'Fatma Kara, Licensed Real Estate Salesperson at FIND Real Estate. View listings.',
+    }, {
+      url: profile, title: 'Fatma Kara | FIND Real Estate',
+      content: 'Fatma Kara is a licensed salesperson at FIND Real Estate in New York.',
+    }],
+    profiles: {
+      [profile]: 'Fatma Kara\nLicensed Real Estate Salesperson\nFIND Real Estate\nfatma@findrealestate.com\n(212) 555-0134',
+    },
+  });
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.equal(found.agents[0]?.email, 'fatma@findrealestate.com');
+  assert.equal(found.agents[0]?.phone, '(212) 555-0134');
+  assert.ok(calls.includes(profile));
+  assert.ok(!calls.includes('https://www.renthop.com/managers/Fatma-Kara'));
+});
+
+test('aggregators without an email trigger a Firecrawl people search', async () => {
+  const profile = 'https://www.voronyc.com/agents/tom-gur';
+  const {fetcher, calls} = providers({
+    listing: {
+      address: '352 East 13th Street', unit: '3S', price: 4500, availability: null,
+      agents: [{name: 'Tom Gur', brokerage: 'Voro New York', role: 'Licensed Real Estate Salesperson', profileUrl: null}],
+    },
+    search: [{
+      url: 'https://www.renthop.com/managers/Tom-Gur', title: 'Tom Gur',
+      content: 'Tom Gur, Licensed Real Estate Salesperson at Voro New York. View listings.',
+    }],
+    firecrawlSearch: [{url: profile, title: 'Tom Gur | VORO NYC', description: 'Tom Gur at VORO NYC'}],
+    profiles: {
+      [profile]: 'Tom Gur\nLicensed as Yotam Gur Zeev\nVORO NYC\ntom@voronyc.com\n551-333-6680',
+    },
+  });
+  const listing = parseEmailListing({address: '352 East 13th Street', unit: '3S', price: 4500, bedrooms: 1, bathrooms: 1,
+    brokerage: 'Voro New York', city: 'New York', listingUrl: 'https://streeteasy.com/rental/5153059'});
+  const found = await findListingAgents(listing, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.equal(found.agents[0]?.email, 'tom@voronyc.com');
+  assert.equal(found.agents[0]?.phone, '551-333-6680');
+  assert.ok(calls.includes(profile));
+  assert.ok(calls.some(call => call === 'search:Tom Gur Voro'));
+  assert.ok(!calls.includes('https://www.renthop.com/managers/Tom-Gur'));
+});
+
+test('a scraped namesake at another firm is still refused', async () => {
+  const other = 'https://theagencyre.com/agent/fatma-kara';
+  const {fetcher} = providers({
+    search: [{
+      url: other, title: 'Fatma Kara',
+      content: 'Fatma Kara is a real estate agent. View profile.',
+    }],
+    profiles: {
+      [other]: 'Fatma Kara\nThe Agency\nfatma@theagencyre.com\n(240) 713-1490',
+    },
+  });
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.equal(found.agents[0]?.email, null);
+  assert.equal(found.agents[0]?.phone, null);
+});
+
+test('Firecrawl search is used when Tavily is over quota', async () => {
+  const profile = 'https://findrealestate.com/agents/fatma-kara';
+  const {fetcher, calls} = providers({
+    tavilyStatus: 432,
+    firecrawlSearch: [{url: profile, title: 'Fatma Kara | FIND Real Estate', description: 'Fatma Kara at FIND Real Estate'}],
+    profiles: {
+      [profile]: 'Fatma Kara\nFIND Real Estate\nfatma@findrealestate.com\n212-555-0134',
+    },
+  });
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.equal(found.agents[0]?.email, 'fatma@findrealestate.com');
+  assert.ok(calls.some(call => call === 'search:Fatma Kara FIND'));
+  assert.ok(calls.includes(profile));
+});
+
 test('a search result that never names the agent supplies nothing', async () => {
   const {fetcher} = providers({search: [{
     url: 'https://findrealestate.com/team', title: 'Our team',
@@ -130,7 +218,7 @@ test('a StreetEasy address that adds city and ZIP is still this apartment', asyn
   });
   const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
   assert.deepEqual(found.agents.map(agent => agent.name), ['Fatma Kara']);
-  assert.match(calls[1]!, /^search:"Fatma Kara" FIND Real Estate/);
+  assert.equal(calls[1], 'search:Fatma Kara FIND');
 });
 
 test('a different apartment or a company account cannot become the listing agent', async () => {

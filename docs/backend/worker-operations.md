@@ -28,7 +28,7 @@ flight, releasing the mailbox lease, and exiting.
 | `DATABASE_URL` | required | Postgres, from the root `.env` |
 | `OPENROUTER_API_KEY` | required | Drafting model; also paid enrichment when a budget is set |
 | `SCOUT_OWNER_USER_ID` | none | The one user this mailbox belongs to |
-| `TAVILY_API_KEY`, `FIRECRAWL_API_KEY` | none | StreetEasy/Tavily fallback inside `enrichWithAgent` |
+| `TAVILY_API_KEY`, `FIRECRAWL_API_KEY` | none | StreetEasy people-search fallback inside `enrichWithAgent` |
 | `SCOUT_ENRICHMENT_BUDGET_USD` | 0 | Per-process OpenRouter discovery cap; `$0` skips paid research |
 | `SCOUT_CATCH_UP_DAYS` | 2 | Window a first run scans |
 | `SCOUT_MESSAGES_PER_CYCLE` | 25 | Upper bound on mail fetched per cycle |

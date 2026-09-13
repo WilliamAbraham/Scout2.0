@@ -57,7 +57,7 @@ export function scoreResult(result: TavilyResult, name: string, brokerage: strin
   if (brokerage_.some(t => urlLower.includes(t))) score += 2;
   else if (brokerage_.some(t => haystack.includes(t))) score += 1;
   if (/[/?=](?:agents?|team|profile|our-team|people|staff|brokers?|managers?)\b/.test(urlLower)) score += 1;
-  if (SOCIAL_RE.test(urlLower) || /(?:zillow|realtor|trulia|homes)\.com/.test(urlLower)) score -= 2;
+  if (SOCIAL_RE.test(urlLower) || /(?:zillow|realtor|trulia|homes|renthop|linecity|datanyze|rocketreach|cityrealty)\./.test(urlLower)) score -= 2;
   return score;
 }
 
@@ -140,7 +140,10 @@ export async function findAgentEmail(
 ): Promise<AgentEmailLookup> {
   const fetcher = options.fetch ?? fetch;
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const query = `"${agent.name}" "${agent.brokerage}"`;
+  const distinctive = agent.brokerage.split(/\s+/).find(part => !STOP_WORDS.test(part.toLowerCase()))
+    ?? agent.brokerage.split(/\s+/)[0]
+    ?? agent.brokerage;
+  const query = `${agent.name} ${distinctive}`;
   const log = (message: string) => options.log?.(`tavily contact lookup ${query}: ${message}`);
   let body: {results?: TavilyResult[]};
   try {
@@ -152,9 +155,26 @@ export async function findAgentEmail(
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return {email: null, searchedUrl: null, note: `Tavily search failed (HTTP ${response.status})`};
+      if (!options.firecrawlKey) {
+        return {email: null, searchedUrl: null, note: `Tavily search failed (HTTP ${response.status})`};
+      }
+      log(`Tavily HTTP ${response.status}; trying Firecrawl search`);
+      const search = await fetcher('https://api.firecrawl.dev/v2/search', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', Authorization: `Bearer ${options.firecrawlKey}`},
+        body: JSON.stringify({query, limit: 5}),
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!search.ok) {
+        await search.body?.cancel();
+        return {email: null, searchedUrl: null, note: `Tavily search failed (HTTP ${response.status})`};
+      }
+      const found = await search.json() as {data?: {web?: Array<{url?: string; title?: string; description?: string}>}};
+      body = {results: (found.data?.web ?? []).flatMap(row => typeof row.url === 'string'
+        ? [{url: row.url, title: row.title ?? '', content: row.description ?? ''}] : [])};
+    } else {
+      body = await response.json() as {results?: TavilyResult[]};
     }
-    body = await response.json() as {results?: TavilyResult[]};
   } catch (error) {
     return {email: null, searchedUrl: null, note: `Tavily search failed: ${error instanceof Error ? error.message.slice(0, 120) : 'unknown error'}`};
   }
