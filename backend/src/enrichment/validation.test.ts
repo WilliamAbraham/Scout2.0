@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import {indexedHitSupportsAgent, normalizeAddress, normalizeUnit, parseExtraction, supportedAgents, verifyListing} from './service.ts';
+import {emailCandidates} from './agentContacts.ts';
 import type {Agent, EmailListing, ExtractedListing} from './service.ts';
 
 const input: EmailListing = {address: '448 West 19th Street', unit: 'R4', price: 8500, bedrooms: 3, bathrooms: 2,
@@ -125,4 +126,24 @@ test('malformed extracted data is rejected before verification', async t => {
     {...listing(), agents: [{...agent('Ava'), email: ['ava@broker.example']}]},
   ];
   for (const [index, value] of invalid.entries()) await t.test(String(index), () => assert.throws(() => parseExtraction(value)));
+});
+
+test('a roster phone glued onto the address is stripped, and only if the address is still the agent\'s', () => {
+  // Douglas Elliman's roster prints the office number immediately above the
+  // address, and the extraction runs them together.
+  const [repaired] = emailCandidates('212.598.3199matthew.brautigam@elliman.com', 'Matthew Brautigam', 'Douglas Elliman');
+  assert.equal(repaired?.value, 'matthew.brautigam@elliman.com');
+
+  // The same page also carries Matthew Abril. Sharing a first name is not
+  // being the same person, so his address is not a candidate here.
+  assert.deepEqual(emailCandidates('212.598.3199matthew.abril@elliman.com', 'Matthew Brautigam', 'Douglas Elliman')
+    .filter(candidate => candidate.nameMatch), []);
+});
+
+test('an unseparated local part is still read as the agent\'s own address', () => {
+  for (const [text, name] of [['lancelot@serhant.com', 'Lancelot Watson-Taffe'],
+    ['jasont@serhant.com', 'Jason Tsalkas'], ['keyan.sanai@elliman.com', 'Keyan Sanai']] as const) {
+    const [candidate] = emailCandidates(text, name, 'SERHANT.');
+    assert.equal(candidate?.nameMatch, true, text);
+  }
 });

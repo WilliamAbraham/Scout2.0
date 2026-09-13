@@ -725,8 +725,11 @@ export class BrokerEnrichment {
    */
   private async fromListedBy(input: EmailListing, listed: ListingAgentsResult,
     direct: Awaited<ReturnType<typeof resolveDirect>>): Promise<EnrichmentResult> {
-    const issues = [...listed.notes, ...(direct?.issues ?? [])];
-    const warnings = [...(direct?.warnings ?? [])];
+    // An availability date the listing simply reported is not a problem with
+    // the lookup, so it is not filed as one.
+    const reported = (note: string) => note.startsWith('StreetEasy shows "');
+    const issues = [...listed.notes.filter(note => !reported(note)), ...(direct?.issues ?? [])];
+    const warnings = [...listed.notes.filter(reported), ...(direct?.warnings ?? [])];
     if (listed.availability) warnings.push(`StreetEasy shows "${listed.availability}"; the agent is named but the unit may be gone`);
     const listingUrl = listed.listingUrl;
 
@@ -765,6 +768,12 @@ export class BrokerEnrichment {
       } catch (error) {issues.push(`Contact lookup stopped: ${error instanceof Error ? error.message : String(error)}`);}
     }
 
+    // The listing lookup records its own miss before the brokerage site is
+    // consulted; once that recovers an address, the earlier note is wrong.
+    for (const agent of agents.filter(agent => agent.email)) {
+      const stale = issues.indexOf(`No email found for ${agent.name}`);
+      if (stale >= 0) issues.splice(stale, 1);
+    }
     for (const agent of agents) if (!agent.email) issues.push(`No email recovered for ${agent.name}`);
     const reachable = agents.filter(agent => agent.email);
 

@@ -108,7 +108,10 @@ export function parseCanvasListing(value: unknown, input: EmailListing, sourceUr
   const loc = value.Location, details = value.Details;
   const issues: string[] = [], warnings: string[] = [];
   if (typeof loc.Address !== 'string' || normalizeAddress(loc.Address) !== normalizeAddress(input.address)) issues.push('Canvas street mismatch');
-  if (typeof loc.Apartment !== 'string' || normalizeUnit(loc.Apartment) !== normalizeUnit(input.unit)) issues.push('Canvas unit mismatch');
+  // The feed types a numeric unit as a number ("16") and a lettered one as a
+  // string ("7O"), so a string check alone rejects half the catalogue.
+  const apartment = typeof loc.Apartment === 'number' ? String(loc.Apartment) : loc.Apartment;
+  if (typeof apartment !== 'string' || normalizeUnit(apartment) !== normalizeUnit(input.unit)) issues.push('Canvas unit mismatch');
   if (typeof loc.City !== 'string' || normalizeAddress(loc.City) !== normalizeAddress(input.city)) issues.push('Canvas city mismatch');
   if (amount(details.Bedrooms) !== input.bedrooms || amount(details.Bathrooms) !== input.bathrooms) issues.push('Canvas bed/bath mismatch');
   if (typeof details.Description !== 'string' || !details.Description.includes('Canvas Property Group is the exclusive broker/agent')) issues.push('Canvas brokerage attribution absent');

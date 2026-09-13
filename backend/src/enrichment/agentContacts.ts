@@ -1,5 +1,5 @@
 /**
- * Direct email lookup for a named listing agent: search `"<name>" "<brokerage>"`
+ * Direct contact lookup for a named listing agent: search `"<name>" "<brokerage>"`
  * on Tavily, collect every email on the closest pages, and keep the one that
  * belongs to this person at this brokerage. Tavily's page text drops `mailto:`
  * links, so the closest pages are also fetched directly (bounded) when the
@@ -18,6 +18,7 @@ export type EmailEvidence = {
 type TavilyResult = {url: string; title: string; content: string; raw_content?: string | null; score?: number};
 
 const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
+const PHONE_RE = /(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g;
 const GENERIC_LOCAL = /^(?:info|contact|hello|leasing|rentals?|sales|office|admin|team|support|inquiries|marketing|press|careers|noreply|no-reply|privacy|legal|compliance|webmaster)$/i;
 const GENERIC_DOMAIN = /(?:sentry|wixpress|example|w3\.org|schema\.org|googleapis|cloudflare|\.png$|\.jpg$|\.svg$)/i;
 // Profile aggregators and social sites: their text rarely carries the email,
@@ -65,6 +66,12 @@ function nameMatch(local: string, name: string): boolean {
   const parts = tokens(name);
   const first = parts[0] ?? '';
   const last = parts[parts.length - 1] ?? '';
+  // "matthew.abril" is Matthew Abril, not Matthew Brautigam. A separated local
+  // part names its owner in full, so a surname that is not theirs disqualifies
+  // it even though the first name matches. Unseparated locals ("lancelot",
+  // "jasont") carry no such claim and are judged on the tokens alone.
+  const tail = /[._-]/.test(local) ? local.split(/[._-]+/).filter(Boolean).at(-1) ?? '' : '';
+  if (tail.length > 2 && last.length > 2 && tail !== last && !last.startsWith(tail) && !tail.startsWith(last)) return false;
   return (last.length > 2 && local.includes(last))
     || (first.length > 2 && local.includes(first))
     || (first.length > 0 && last.length > 3 && local.startsWith(first[0]!) && local.includes(last.slice(0, 4)));
@@ -80,9 +87,13 @@ export function emailCandidates(text: string, name: string, brokerage: string): 
   for (const match of text.matchAll(EMAIL_RE)) {
     let value = match[0].toLowerCase();
     let [local = '', domain = ''] = value.split('@');
-    // Text extraction can glue a preceding number onto the address ("Image 6mike@…").
-    if (/^\d+[a-z]/.test(local) && (nameMatch(local.replace(/^\d+/, ''), name) || brokerage_.some(t => domain.includes(t)))) {
-      local = local.replace(/^\d+/, ''); value = `${local}@${domain}`;
+    // Text extraction glues whatever precedes the address onto it: an image
+    // caption ("Image 6mike@…") or the office phone above it on a roster
+    // ("212.598.3199matthew.abril@…"). Strip a leading run of digits and the
+    // punctuation inside it, but only when what remains is still attributable.
+    const glued = /^[\d.()\-\s]*\d[.\-]?(?=[a-z])/.exec(local);
+    if (glued && (nameMatch(local.slice(glued[0].length), name) || brokerage_.some(t => domain.includes(t)))) {
+      local = local.slice(glued[0].length); value = `${local}@${domain}`;
     }
     if (seen.has(value)) continue;
     seen.add(value);
@@ -130,7 +141,26 @@ async function firecrawlPageText(url: string, apiKey: string, fetcher: typeof fe
   }
 }
 
-export type AgentEmailLookup = {email: EmailEvidence | null; searchedUrl: string | null; note: string};
+/**
+ * A phone number for the agent, taken from the same page as the accepted email
+ * and from the text immediately around it. A brokerage page lists the whole
+ * office, so the first number on it usually belongs to the switchboard or to
+ * whoever is at the top of the roster; proximity to the agent's own address is
+ * what makes this one theirs.
+ */
+export function phoneNear(text: string, at: number): string | null {
+  const window = text.slice(Math.max(0, at - 400), at + 400);
+  for (const match of window.match(PHONE_RE) ?? []) {
+    const digits = match.replace(/\D/g, '').replace(/^1(?=\d{10}$)/, '');
+    // Placeholders and truncated ids reach the regex; real numbers do not
+    // repeat a single digit ten times or run 1234567890.
+    if (digits.length !== 10 || /^(\d)\1{9}$/.test(digits) || digits === '1234567890') continue;
+    return match.trim();
+  }
+  return null;
+}
+
+export type AgentEmailLookup = {email: EmailEvidence | null; phone: EmailEvidence | null; searchedUrl: string | null; note: string};
 
 type Scored = {candidate: EmailCandidate; url: string; text: string; how: string; weight: number};
 
@@ -152,14 +182,14 @@ export async function findAgentEmail(
     });
     if (!response.ok) {
       await response.body?.cancel();
-      return {email: null, searchedUrl: null, note: `Tavily search failed (HTTP ${response.status})`};
+      return {email: null, phone: null, searchedUrl: null, note: `Tavily search failed (HTTP ${response.status})`};
     }
     body = await response.json() as {results?: TavilyResult[]};
   } catch (error) {
-    return {email: null, searchedUrl: null, note: `Tavily search failed: ${error instanceof Error ? error.message.slice(0, 120) : 'unknown error'}`};
+    return {email: null, phone: null, searchedUrl: null, note: `Tavily search failed: ${error instanceof Error ? error.message.slice(0, 120) : 'unknown error'}`};
   }
   const results = (body.results ?? []).filter(r => typeof r.url === 'string' && /^https?:\/\//.test(r.url));
-  if (results.length === 0) return {email: null, searchedUrl: null, note: `Tavily found nothing for ${query}`};
+  if (results.length === 0) return {email: null, phone: null, searchedUrl: null, note: `Tavily found nothing for ${query}`};
 
   const ranked = results.map(r => ({r, score: scoreResult(r, agent.name, agent.brokerage)})).sort((a, b) => b.score - a.score);
   log(`ranked ${ranked.map(({r, score}) => `${score}:${r.url}`).join(' | ')}`);
@@ -207,13 +237,13 @@ export async function findAgentEmail(
   }
   scored.sort((a, b) => b.weight - a.weight);
   const best = scored[0];
-  if (!best) return {email: null, searchedUrl: ranked[0]!.r.url, note: `No attributable email on the closest pages for ${query} (top: ${ranked[0]!.r.url})`};
+  if (!best) return {email: null, phone: null, searchedUrl: ranked[0]!.r.url, note: `No attributable email on the closest pages for ${query} (top: ${ranked[0]!.r.url})`};
   const {candidate, url, text, how} = best;
+  const excerpt = text.slice(Math.max(0, candidate.index - 160), candidate.index + candidate.value.length + 80).replace(/\s+/g, ' ').trim();
+  const phone = phoneNear(text, candidate.index);
   return {
-    email: {value: candidate.value, evidence: {
-      url, sourceType: 'broker_profile',
-      excerpt: text.slice(Math.max(0, candidate.index - 160), candidate.index + candidate.value.length + 80).replace(/\s+/g, ' ').trim(),
-    }},
+    email: {value: candidate.value, evidence: {url, sourceType: 'broker_profile', excerpt}},
+    phone: phone ? {value: phone, evidence: {url, sourceType: 'broker_profile', excerpt}} : null,
     searchedUrl: url,
     note: `Email read from ${url} (${how} for ${query})`,
   };
