@@ -25,6 +25,7 @@
     "worker:status": "npm run worker:status -w backend",
     "alert": "npm run alert -w backend --",
     "outreach:reconsent": "npm run outreach:reconsent -w backend",
-    "outreach:send-test": "npm run outreach:send-test -w backend"
+    "outreach:send-test": "npm run outreach:send-test -w backend",
+    "search": "npm run search -w backend --"
   }
 }

@@ -1,5 +1,20 @@
 # Scout: current engineering context
 
+## On-demand search and send — 2026-09-13
+
+The demo path is wired end to end: **Start search** and **Send** on `/dashboard` now run the agent from the browser, against the signed-in owner.
+
+- `backend/src/pipeline/poolSearch.ts` scores the shared `listings` pool for one user. Listings are global; ownership is the `user_listings` row, so a new account starts with an empty feed even though the pool is full. The pass reuses `processListingAlert`, so a listing reached this way is persisted, matched, enriched and escalated exactly as one that arrived by mail.
+- Enrichment is reused when it exists. A recorded `enriched` event for the same rental id that actually reached someone is rebuilt into an `EnrichmentResult` (`enrichmentFromSummary`) instead of paying to research the apartment again; everything else runs the real engine. The lookup deliberately skips later empty retries, and the pool is ordered so reusable rows come first — the feed fills immediately, then live lookups follow.
+- `backend/scripts/search.ts` is the CLI both buttons call: `--user`, `--limit`, `--budget-ms`, and `--send`. Progress is one JSON object per line on stdout. The two halves are separate commands on purpose — the search never sends, and `--send` is the only mode that touches the mailbox.
+- `frontend/app/actions/search.ts` spawns that CLI with the owner id from the verified session, never from the form. Runs are bounded (40 listings / 45s for a search, 10 emails for a send) so a request finishes in seconds; the remainder stays queued for the next press. `SearchRunControls` renders the two buttons, counts what Send would act on using the same predicate as the backend, and requires a second click to confirm a send.
+- **Every live send is still redirected.** `CONTROLLED_TEST_RECIPIENT` now defaults to `williamsaibroker@gmail.com` (override with `SCOUT_TEST_RECIPIENT`), so outreach written to a real broker lands in the demo mailbox's own inbox rather than reaching them. `allowRealRecipients` remains the only way past it and nothing sets it.
+
+Verified: 241 backend and 41 frontend tests pass; both workspace typechecks pass. Against the live database, a pool pass scored 25 listings for the demo owner (`9f716093`), 9 of them outreach-ready, with 12/12 cache hits on a cached-first run and successful live enrichment on rows with no recorded result. One live send was executed and confirmed in Gmail: from `williamsaibroker@gmail.com`, subject "Tour request: 444 East 13th Street #9", redirected to the demo mailbox. Spawning the CLI from Next's working directory was verified directly (exit 0, parsed report).
+
+Not verified: the authenticated dashboard in a browser — sign-in requires the owner's password, which was not entered. The buttons, their counts and the refresh path are unverified against a real session. Two of the demo owner's ready pursuits (118 Mulberry #F5, 252 Mott #5/6) name listings the other user already emailed; pursuits are per-user, so Send would mail them again. Harmless while redirected.
+
+
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
 ## Brokerage contact visibility — 2026-09-12

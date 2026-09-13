@@ -1,6 +1,16 @@
 import type {ListingAgent} from './types.ts';
 
-export const CONTROLLED_TEST_RECIPIENT = 'williamja100@gmail.com';
+/**
+ * Every live send is redirected here instead of reaching the agent it was
+ * written to. Outreach is addressed to real brokers found by enrichment, and a
+ * demo must not cold-email them, so the redirect is the default rather than an
+ * opt-in: `allowRealRecipients` on the sender is the only way past it.
+ *
+ * It defaults to the mailbox the agent sends from, so a redirected send lands
+ * in both Sent and Inbox and the whole round trip is visible in one account.
+ */
+export const CONTROLLED_TEST_RECIPIENT =
+  process.env.SCOUT_TEST_RECIPIENT?.trim() || 'williamsaibroker@gmail.com';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 

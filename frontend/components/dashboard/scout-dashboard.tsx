@@ -33,6 +33,7 @@ import {
   X,
 } from "lucide-react";
 import { demoListings, demoNow } from "./inbox-fixtures";
+import { SearchRunControls } from "./search-run-controls";
 import {
   actionOwner,
   activeGroups,
@@ -118,11 +119,16 @@ export function ScoutDashboard({
   mode = "demo",
   account = demoAccount,
   preferencesContext = signedOutPreferences,
+  onStartSearch,
+  onSend,
 }: {
   initialListings?: InboxListing[];
   mode?: "demo" | "live";
   account?: InboxAccount;
   preferencesContext?: PreferencesContext;
+  /** The on-demand agent commands. Absent in the public demo, which runs nothing. */
+  onStartSearch?: () => Promise<CommandActionState>;
+  onSend?: () => Promise<CommandActionState>;
 }) {
   const router = useRouter();
   const searchSummary = preferencesContext.profileError
@@ -173,6 +179,18 @@ export function ScoutDashboard({
     "All listings": listings.length,
     Closed: listings.filter(isClosed).length,
   };
+  // What one press of Send would actually act on: matched, unblocked, still
+  // at `matched` (so no opening email has gone out), and holding a contact
+  // with a mailbox. The same predicate the backend sender uses, so the count
+  // on the button is not a guess.
+  const readyToSend = listings.filter(
+    (item) =>
+      !isClosed(item) &&
+      item.pursuit !== null &&
+      item.pursuit.stage === "matched" &&
+      !item.pursuit.blocker &&
+      item.pursuit.contacts.some((contact) => contact.email),
+  ).length;
   const filtered = listings.filter(
     (item) =>
       groupFor(item, view) &&
@@ -395,6 +413,16 @@ export function ScoutDashboard({
               ))}
             </div>
           </header>
+          {mode === "live" && onStartSearch && onSend && (
+            <SearchRunControls
+              readyToSend={readyToSend}
+              paused={paused}
+              disabled={controlsDisabled}
+              onStartSearch={onStartSearch}
+              onSend={onSend}
+              onRefresh={refreshInbox}
+            />
+          )}
           <div className={styles.toolbar}>
             <label className={styles.search}>
               <Search aria-hidden="true" />

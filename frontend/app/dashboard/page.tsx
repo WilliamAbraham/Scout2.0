@@ -6,6 +6,7 @@ import { projectRecords } from "@/components/dashboard/inbox-records";
 import type { StoredUserListing } from "@/components/dashboard/inbox-records";
 import { loadPreferences } from "@/lib/profile-server";
 import { profileSummary } from "@/lib/search-profile";
+import { sendOutreach, startSearch } from "@/app/actions/search";
 
 async function ConnectedInbox() {
   const supabase = await createClient();
@@ -56,6 +57,8 @@ async function ConnectedInbox() {
       }
       mode="live"
       preferencesContext={preferencesContext}
+      onStartSearch={startSearch}
+      onSend={sendOutreach}
       account={{
         status,
         detail,

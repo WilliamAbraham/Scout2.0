@@ -25,7 +25,8 @@
     "worker:status": "node scripts/worker.ts --status",
     "alert": "node scripts/runAlert.ts",
     "enrich:sample": "node scripts/enrichSample.ts",
-    "reenrich": "node scripts/reenrich.ts"
+    "reenrich": "node scripts/reenrich.ts",
+    "search": "node scripts/search.ts"
   },
   "dependencies": {
     "@google-cloud/local-auth": "^2.1.0",
