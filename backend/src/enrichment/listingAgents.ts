@@ -54,13 +54,19 @@ const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 const isObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
-/** Only the alert's own listing page. Never a search page or a whole building. */
+/**
+ * One apartment's own page. `/rental/<id>` is what an alert carries and it
+ * redirects to `/building/<slug>/<unit>`, which is the same page, so both are
+ * accepted. A bare building URL without a unit is not.
+ */
 export function streetEasyListingUrl(raw: string | undefined): string | null {
   if (!raw) return null;
   try {
     const url = new URL(raw);
-    if (url.protocol !== 'https:' || url.hostname !== 'streeteasy.com') return null;
-    return /^\/rental\/\d+\/?$/.test(url.pathname) ? `https://streeteasy.com${url.pathname}` : null;
+    if (url.protocol !== 'https:' || !/^(?:www\.)?streeteasy\.com$/.test(url.hostname)) return null;
+    const path = url.pathname.replace(/\/$/, '');
+    const listing = /^\/rental\/\d+$/.test(path) || /^\/building\/[^/]+\/[^/]+$/.test(path);
+    return listing ? `https://streeteasy.com${path}` : null;
   } catch {return null;}
 }
 
