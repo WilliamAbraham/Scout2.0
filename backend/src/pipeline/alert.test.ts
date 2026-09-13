@@ -139,6 +139,22 @@ test('processListingAlert escalates no_contact when enrichment has no email', as
   assert.equal(pipeline.store.saved[0]?.hasSnapshot, false);
 });
 
+test('brokerage contact routes survive an email escalation with evidence and phone intact', async () => {
+  const route = {
+    kind: 'leasing_team' as const, name: 'Centennial Properties', email: null,
+    phone: '212-228-9300', relationship: 'exact_listing' as const,
+    sourceUrls: ['https://centpropny.com/detail'], evidence: 'Listing team phone',
+    fetchedAt: '2026-09-12T22:00:00Z',
+  };
+  const pipeline = deps({enrich: async () => enrichmentReady({
+    agents: [], contactRoutes: [route], outreachReady: false, resolution: 'leasing_team_verified',
+  })});
+  const outcome = await processListingAlert('user-1', source, listing, pipeline);
+  assert.equal(outcome.status, 'needs_human');
+  assert.equal(pipeline.store.saved[0]?.hasSnapshot, false);
+  assert.deepEqual(pipeline.store.saved[0]?.summary.contactRoutes, [route]);
+});
+
 test('processListingAlert skips non-matches without enriching', async () => {
   let enriched = 0;
   const store = fakeStore({isMatch: false, pursuitId: null, needsEnrichment: false});

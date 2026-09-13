@@ -604,6 +604,7 @@ export function ScoutDashboard({
                                           .join(" · ") ||
                                           "Neighborhood not provided"}
                                       </small>
+                                      {item.brokerage && <small>{item.brokerage}</small>}
                                     </span>
                                   </button>
                                 </td>
@@ -628,6 +629,11 @@ export function ScoutDashboard({
                                 </td>
                                 <td className={styles.updateCell}>
                                   <p>{nextStep(item)}</p>
+                                  {item.pursuit?.recoveredContacts?.map((contact, index) => (
+                                    (contact.email || contact.phone) && <small key={`contact-${index}`}>
+                                      {contact.label}: {[contact.email, contact.phone].filter(Boolean).join(" · ")}
+                                    </small>
+                                  ))}
                                   <time
                                     dateTime={
                                       item.pursuit?.updatedAt ?? item.observedAt
@@ -1062,7 +1068,8 @@ function ApartmentDetails({
           </section>
           <ListingQuestions item={item} profile={profile} />
           <section>
-            <h3>Broker contact</h3>
+            <h3>Broker / brokerage contact</h3>
+            {item.brokerage && <p>{item.brokerage}</p>}
             {pursuit?.contactProvidedByUser && (
               <p className={styles.userProvidedLabel}>Provided by you</p>
             )}
@@ -1072,11 +1079,24 @@ function ApartmentDetails({
                   {contact.name ?? "Name not provided"}
                   <br />
                   {contact.email ?? "Email not provided"}
+                  {contact.phone && <><br />{contact.phone}</>}
                 </p>
               ))
             ) : (
-              <p>No verified contact is available in this record.</p>
+              !pursuit?.recoveredContacts?.length && (
+                <p>Email and phone have not been recovered yet. Check the listing’s contact section.</p>
+              )
             )}
+            {pursuit?.recoveredContacts?.map((contact, index) => (
+              <p key={`recovered-${index}`}>
+                <small>{contact.label}</small><br />
+                {contact.name ?? item.brokerage ?? "Name not provided"}<br />
+                {contact.email ?? "Email not provided"}
+                {contact.phone && <><br />{contact.phone}</>}
+                {contact.checkedAt && <><br /><small>Recorded {timestamp(contact.checkedAt)}</small></>}
+                {contact.sourceUrl && <><br /><a href={contact.sourceUrl} target="_blank" rel="noreferrer">View contact source <ArrowUpRight aria-hidden="true" /></a></>}
+              </p>
+            ))}
             {pursuit?.contactEvidenceUrl && (
               <a
                 href={pursuit.contactEvidenceUrl}

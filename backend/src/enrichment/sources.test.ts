@@ -72,6 +72,20 @@ test('Centennial unit reversal remains a review contact, with primary vCard evid
   assert.equal(result.outreachReady, false); assert.equal(result.agents.length, 0);
   assert.match(result.issues.join(' '), /No automatic unit reversal/);
 });
+
+test('Centennial retains its published office phone when #3 is absent from the catalog', async t => {
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'scout-direct-')); t.after(() => rm(cacheDir, {recursive: true, force: true}));
+  const listing = {...input, address: '248 Mott Street', unit: '3', price: 7995, bathrooms: 1, brokerage: 'Centennial Properties NY'};
+  const result = await new BrokerEnrichment({cacheDir, directOnly: true, fetch: async () => new Response(
+    '<footer>Centennial Properties NY • 424 West 51st Street • (212) 228-9300 • [email protected]</footer>',
+  )}).run(listing);
+  assert.equal(result.resolution, 'brokerage_only');
+  assert.equal(result.outreachReady, false);
+  assert.equal(result.contactRoutes[0]?.phone, '212-228-9300');
+  assert.equal(result.contactRoutes[0]?.email, null);
+  assert.equal(result.contactRoutes[0]?.relationship, 'brokerage');
+  assert.deepEqual(result.contactRoutes[0]?.sourceUrls, ['https://centpropny.com/index.cfm?page=properties']);
+});
 test('Canvas workflow discovers changing property IDs from catalogue links and caches the evidence chain', async t => {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'scout-direct-')); t.after(() => rm(cacheDir, {recursive: true, force: true}));
   const pages = new Map([
