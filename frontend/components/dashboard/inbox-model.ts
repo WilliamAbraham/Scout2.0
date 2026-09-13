@@ -77,6 +77,14 @@ export type InboxListing = {
       role?: "primary" | "secondary" | "unspecified";
     }[];
     contactProvidedByUser?: boolean;
+    recoveredContacts?: {
+      name: string | null;
+      email: string | null;
+      phone: string | null;
+      label: string;
+      sourceUrl: string | null;
+      checkedAt: string | null;
+    }[];
     nextFollowUpAt?: string | null;
     followUpCount?: number;
     contactEvidenceUrl: string | null;

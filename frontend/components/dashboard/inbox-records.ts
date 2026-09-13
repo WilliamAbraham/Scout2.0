@@ -139,6 +139,39 @@ type OrderedEvent = StoredPursuit["pursuit_events"][number] & {
   at: string;
 };
 
+// Keep research results visible without making them outreach recipients.
+function recoveredContacts(events: OrderedEvent[]) {
+  const latest = events.findLast((event) => event.type === "enriched");
+  if (!latest) return [];
+  const summary = latest.payload;
+  const agents = Array.isArray(summary.agents) ? summary.agents : [];
+  const routes = Array.isArray(summary.contactRoutes) ? summary.contactRoutes : [];
+  return [
+    ...agents.map((value) => ({ value, agent: true })),
+    ...routes.map((value) => ({ value, agent: false })),
+  ].flatMap(({ value, agent }) => {
+    const contact = payloadOf(value);
+    const name = plainString(contact.name);
+    const email = emails([contact.email])?.[0] ?? null;
+    const phone = plainString(contact.phone);
+    if (!name && !email && !phone) return [];
+    const sources = Array.isArray(contact.sourceUrls) ? contact.sourceUrls : [];
+    return [{
+      name, email, phone,
+      label: agent
+        ? "Listing agent · recovered contact"
+        : contact.relationship === "unit_conflict"
+          ? "Brokerage contact · unit differs; review needed"
+          : contact.relationship === "exact_listing"
+            ? "Listing leasing team"
+            : "Brokerage office · listing association unconfirmed",
+      sourceUrl: sources.map(safeSourceUrl).find(Boolean)
+        ?? safeSourceUrl(summary.listingUrl) ?? safeSourceUrl(summary.brokerageUrl),
+      checkedAt: offsetTimestamp(contact.fetchedAt) ?? offsetTimestamp(summary.checkedAt),
+    }];
+  });
+}
+
 function orderedEvents(
   pursuit: StoredPursuit,
   observedAt: string,
@@ -454,6 +487,9 @@ export function projectRecords(rows: StoredUserListing[]): InboxListing[] {
               tour: tourFrom(events),
               closedReason: closedReason(events),
               contacts,
+              recoveredContacts: recoveredContacts(events).filter((recovered) =>
+                !contacts.some((contact) => contact.name === recovered.name
+                  && contact.email === recovered.email && contact.phone === recovered.phone)),
               contactEvidenceUrl: safeSourceUrl(
                 pursuit.contact_snapshot?.sourceUrl,
               ),

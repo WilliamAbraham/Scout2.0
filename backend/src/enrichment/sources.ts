@@ -176,6 +176,15 @@ export function parseVcard(text: string): {name: string | null; email: string | 
 
 async function centennial(input: EmailListing, get: Reader, result: DirectResult) {
   const catalog = await get('https://centpropny.com/index.cfm?page=properties'), $ = load(catalog.body);
+  const footer = compact($('footer').text());
+  const officePhone = businessPhone(footer.match(/(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/)?.[0]);
+  const officeEmail = email($('footer a[href^="mailto:"]').first().attr('href')?.slice(7));
+  if (footer.includes('Centennial Properties NY') && (officePhone || officeEmail)) {
+    result.contactRoutes.push({kind: 'brokerage_office', name: 'Centennial Properties NY',
+      email: officeEmail, phone: officePhone, relationship: 'brokerage',
+      sourceUrls: [catalog.url], evidence: footer, fetchedAt: catalog.fetchedAt});
+    result.status = 'needs_review'; result.resolution = 'brokerage_only';
+  }
   const matches: Array<{url: string; unit: string}> = [];
   for (const el of $('.property-card').toArray()) {
     const card = $(el), title = compact(card.find('h3').text()), parts = /^(.*?)\s*,?\s*#(.+)$/.exec(title);
@@ -215,9 +224,9 @@ async function centennial(input: EmailListing, get: Reader, result: DirectResult
   if (contact.phone !== directPhone) throw new Error('Centennial listing and contact card disagree');
   const conflict = !exact.length;
   result.listingUrl = page.url;
-  result.contactRoutes.push({kind: 'leasing_team', name: contact.name, email: contact.email, phone: contact.phone,
+  result.contactRoutes = [{kind: 'leasing_team', name: contact.name, email: contact.email, phone: contact.phone,
     relationship: conflict ? 'unit_conflict' : 'exact_listing', sourceUrls: [catalog.url, page.url, profile.url, vcard.url],
-    evidence: `${heading}; Listing Agent ${compact(attribution.text())}; ${vcard.body}`, fetchedAt: vcard.fetchedAt});
+    evidence: `${heading}; Listing Agent ${compact(attribution.text())}; ${vcard.body}`, fetchedAt: vcard.fetchedAt}];
   result.status = conflict ? 'needs_review' : 'source_matched';
   result.resolution = conflict ? 'brokerage_only' : 'leasing_team_verified';
   result.outreachReady = !conflict; result.rosterCompleteness = conflict ? 'unverified' : 'source_only';

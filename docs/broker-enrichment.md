@@ -56,6 +56,8 @@ Required input values are validated before network requests. A trailing `#unit` 
 
 `contactRoutes` is separate from `agents`. Its `kind` is `leasing_team` or `brokerage_office`; its `relationship` is `exact_listing`, `unit_conflict`, or `brokerage`. Each record carries source URLs, evidence and the original retrieval timestamp. `resolution` distinguishes `agents_verified`, `leasing_team_verified`, `brokerage_only`, `owner_listed`, and `unresolved`. A current exact team route may set `outreachReady`; an office route, owner classification, or unit conflict cannot. A mailbox in an agent feed's name field is not a person.
 
+Alert enrichment events now retain these routes for dashboard display even when no outreach snapshot is saved. Centennial also preserves its explicitly named catalog-footer office phone/email when exact-unit discovery fails. The UI labels office routes and unit conflicts, shows their original retrieval times and source links, and keeps recovered contacts separate from automated email recipients. Historical events that omitted routes need a source-backed repair to expose those channels.
+
 Direct reads allow only reviewed HTTPS origins, validate each redirect, limit response size to 4 MB, and make at most 16 requests within the service's total call budget. They use a 30-second default timeout and the same one-hour cache policy. `directSources: false` disables adapters for provider-only comparisons. Unknown brokerages use the existing generic workflow unless `directOnly` is set. Provider failures preserve recovered routes.
 
 ## Method and evidence

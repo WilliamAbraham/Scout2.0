@@ -44,6 +44,50 @@ const sendPayload = {
   threadId: null,
 };
 
+test("brokerage and phone-only research remain visible without becoming outreach-ready", () => {
+  const row = base(pursuit({
+    needs_human_reason: "no_contact",
+    needs_human_note: "No verified contact email found",
+    pursuit_events: [{id: "research", type: "enriched", created_at: at, payload: {
+      checkedAt: at, agents: [], contactRoutes: [{
+        name: "Centennial Properties NY", phone: "212-228-9300", email: null,
+        relationship: "brokerage", sourceUrls: ["javascript:alert(1)", "https://centpropny.com/"], fetchedAt: at,
+      }],
+    }}],
+  }));
+  row.listings.brokerage = "Centennial Properties NY";
+  const [item] = projectRecords([row]);
+  assert.equal(item.brokerage, "Centennial Properties NY");
+  assert.deepEqual(item.pursuit.contacts, []);
+  assert.equal(item.pursuit.recoveredContacts[0].phone, "212-228-9300");
+  assert.equal(item.pursuit.recoveredContacts[0].sourceUrl, "https://centpropny.com/");
+  assert.match(item.pursuit.recoveredContacts[0].label, /Brokerage office/);
+  assert.equal(item.pursuit.blocker.reason, "no_contact");
+  assert.equal(item.pursuit.work, "unknown");
+});
+
+test("older agent-only summaries are recovered, but candidates and superseded contacts are excluded", () => {
+  const row = base(pursuit({pursuit_events: [{id: "research", type: "enriched", created_at: at, payload: {
+    agents: [{name: "Agent", phone: "212-555-0123"}], candidateAgents: ["Unverified Person"],
+  }}]}));
+  assert.equal(projectRecords([row])[0].pursuit.recoveredContacts.length, 1);
+  row.pursuits.pursuit_events.push({id: "newer", type: "enriched", created_at: "2026-09-13T12:00:00Z", payload: {
+    agents: [null, 1, {}], contactRoutes: "invalid",
+  }});
+  assert.deepEqual(projectRecords([row])[0].pursuit.recoveredContacts, []);
+});
+
+test("a unit-conflict email is visible for review and cannot mark a pursuit ready", () => {
+  const row = base(pursuit({pursuit_events: [{id: "research", type: "enriched", created_at: at, payload: {
+    contactRoutes: [{name: "Leasing", email: "leasing@example.com", relationship: "unit_conflict"}],
+  }}]}));
+  const [item] = projectRecords([row]);
+  assert.match(item.pursuit.recoveredContacts[0].label, /unit differs/);
+  assert.deepEqual(item.pursuit.contacts, []);
+  assert.notEqual(item.pursuit.work, "ready");
+  assert.doesNotMatch(item.pursuit.nextStep, /Ready for Scout/);
+});
+
 test("dry-run drafts stay drafts and get their own active group without advancing stage", () => {
   const [item] = projectRecords([
     base(

@@ -2,6 +2,14 @@
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
 
+## Brokerage contact visibility — 2026-09-12
+
+Implemented on `codex/show-brokerage-contacts`. The alert summary previously discarded `contactRoutes`, and the dashboard ignored event contacts and never rendered snapshot phone numbers. Summaries now retain routes with evidence and original timestamps. The dashboard shows brokerage names in rows, email/phone research results in rows and details, and phone numbers from existing outreach snapshots. Only the latest completed enrichment event supplies recovered contacts; candidates and malformed payloads do not become contacts. Recovered details remain separate from outreach recipients and work-state calculations.
+
+Centennial's existing direct adapter now retains an explicitly attributed catalog-footer office phone/email before exact-unit lookup. #3 was absent from that catalog and generic provider reads hit HTTP 429; its saved event had neither a contact snapshot nor routes. Restored the #3 office phone (212-228-9300) and #6-5 team email/phone from the existing cache into their two saved `enriched` events. The latter retains `unit_conflict` for source #5-6. Original retrieval times, blockers, snapshots and pursuit stages were preserved. No worker, paid research or send ran; other historical events with discarded routes still require recovery.
+
+Verification: `yarn test` passed 222 backend and 40 frontend tests; workspace typechecks and targeted frontend ESLint passed. `yarn lint` remains unavailable because the root has no lint script; full frontend lint retains the existing violations in `theme-switcher.tsx` and `tailwind.config.ts`. The sample browser check confirmed brokerage/phone in the inbox and contact details with evidence and timestamp; the temporary QA route was removed. Authenticated browser verification requires owner login; the two live event repairs were verified by database return values.
+
 ## Search preferences page — 2026-09-12
 
 Implemented `/preferences` on `codex/more-enrichment-on-frontend`. Inbox navigation and the no-fitting-slot shortcut now lead to the page, replacing the dialog. The page retains Scout’s existing shell, separates Search filters / Apartment preferences / Tour availability, and adds suggestion toggles, custom lists and a live summary.

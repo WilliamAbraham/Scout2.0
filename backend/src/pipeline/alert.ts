@@ -87,6 +87,7 @@ export function summarizeEnrichment(result: EnrichmentResult): Record<string, un
     outreachReady: result.outreachReady,
     listingUrl: result.listingUrl,
     brokerageUrl: result.brokerageUrl,
+    contactRoutes: result.contactRoutes,
     agents: result.agents.map(agent => ({
       name: agent.name,
       email: agent.email,
