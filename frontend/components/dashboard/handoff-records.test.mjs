@@ -71,6 +71,7 @@ test("older agent-only summaries are recovered, but candidates and superseded co
     agents: [{name: "Agent", phone: "212-555-0123"}], candidateAgents: ["Unverified Person"],
   }}]}));
   assert.equal(projectRecords([row])[0].pursuit.recoveredContacts.length, 1);
+  assert.equal(projectRecords([row])[0].pursuit.recoveredContacts[0].name, "Agent");
   row.pursuits.pursuit_events.push({id: "newer", type: "enriched", created_at: "2026-09-13T12:00:00Z", payload: {
     agents: [null, 1, {}], contactRoutes: "invalid",
   }});
@@ -85,6 +86,18 @@ test("a unit-conflict email is visible for review and cannot mark a pursuit read
   assert.match(item.pursuit.recoveredContacts[0].label, /unit differs/);
   assert.deepEqual(item.pursuit.contacts, []);
   assert.notEqual(item.pursuit.work, "ready");
+  assert.doesNotMatch(item.pursuit.nextStep, /Ready for Scout/);
+});
+
+test("a deferred lookup still exposes its recovered broker name without claiming email readiness", () => {
+  const row = base(pursuit({pursuit_events: [{id: "research", type: "error", created_at: at, payload: {
+    deferred: true, agents: [{name: "Fatma Kara", sourceUrl: "https://streeteasy.com/profile/942807"}],
+  }}]}));
+  const [item] = projectRecords([row]);
+  assert.equal(item.pursuit.recoveredContacts[0].name, "Fatma Kara");
+  assert.equal(item.pursuit.recoveredContacts[0].email, null);
+  assert.equal(item.pursuit.recoveredContacts[0].sourceUrl, "https://streeteasy.com/profile/942807");
+  assert.deepEqual(item.pursuit.contacts, []);
   assert.doesNotMatch(item.pursuit.nextStep, /Ready for Scout/);
 });
 

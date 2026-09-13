@@ -20,7 +20,7 @@ export type EnrichmentFailure =
   | {kind: 'owner_listed'; detail: string}
   /** A source was unreachable or malformed. Worth one bounded retry. */
   | {kind: 'transient'; detail: string}
-  /** The shared daily allowance is gone. Retry after it resets, never now. */
+  /** The configured allowance is gone. Resume after more budget is supplied. */
   | {kind: 'budget_exhausted'; detail: string}
   /** Enrichment ran but its result is not safe to email. Needs a human. */
   | {kind: 'incomplete'; detail: string};

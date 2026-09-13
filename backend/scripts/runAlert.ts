@@ -20,6 +20,10 @@ import {runTurn} from '../src/outreach/turn.ts';
 import {DATA_DIR, REPO_ROOT} from '../src/paths.ts';
 import {gmailListingToEmailInput} from '../src/pipeline/listingInput.ts';
 import {PostgresStore} from '../src/pipeline/postgresStore.ts';
+import {agentResultForPipeline} from '../src/pipeline/agentEnrichment.ts';
+import {classifyEnrichment, summarizeEnrichment} from '../src/pipeline/alert.ts';
+import {contactSnapshotFromEnrichment} from '../src/pipeline/contacts.ts';
+import {isRetryable} from '../src/pipeline/contracts.ts';
 
 /**
  * Run the whole pipeline for ONE StreetEasy alert email, end to end:
@@ -152,38 +156,6 @@ const budget = new EnrichmentBudget(budgetUsd);
 const receivedAt = Number.isNaN(new Date(message.date).getTime()) ? new Date() : new Date(message.date);
 const source = {messageId: message.id, receivedAt};
 
-/** The agent's evidence-backed emails, in the shape the outreach turn reads. */
-function snapshotFromAgent(result: AgentEnrichmentResult): ContactSnapshot | null {
-  const agents = result.agents.filter(agent => agent.email);
-  if (agents.length > 0) {
-    return {
-      tier: 'listing_agents',
-      sourceUrl: result.listingUrl,
-      contacts: agents.map(agent => ({
-        name: agent.name, email: agent.email!.value, phone: agent.phone?.value ?? null,
-        profileUrl: agent.attribution.url, role: 'unspecified',
-      })),
-    };
-  }
-  const direct = result.directContacts.filter(route => route.email && route.relationship === 'exact_listing');
-  const office = result.officeContacts.filter(contact => contact.email);
-  if (direct.length > 0) {
-    return {
-      tier: direct[0]!.kind === 'leasing_team' ? 'building_leasing' : 'brokerage',
-      sourceUrl: direct[0]!.sourceUrls[0] ?? null,
-      contacts: direct.map(route => ({name: route.name, email: route.email, phone: route.phone, profileUrl: null, role: 'unspecified'})),
-    };
-  }
-  if (office.length > 0) {
-    return {
-      tier: 'brokerage',
-      sourceUrl: office[0]!.email!.evidence.url,
-      contacts: office.map(contact => ({name: contact.name, email: contact.email!.value, phone: contact.phone?.value ?? null, profileUrl: null, role: 'unspecified'})),
-    };
-  }
-  return null;
-}
-
 type Outcome = {rentalId: string; address: string; pursuitId: string | null; status: string; contacts: ContactSnapshot['contacts']};
 const outcomes: Outcome[] = [];
 
@@ -205,24 +177,23 @@ for (const listing of cards) {
       apiKey: openRouterApiKey, budget, log,
       ...(process.env.TAVILY_API_KEY ? {tavilyKey: process.env.TAVILY_API_KEY} : {}),
       ...(process.env.FIRECRAWL_API_KEY ? {firecrawlKey: process.env.FIRECRAWL_API_KEY} : {}),
-      ...(process.env.OPENROUTER_MODEL ? {model: process.env.OPENROUTER_MODEL} : {}),
       cacheDir: path.join(DATA_DIR, 'enrichment', 'agent-cache'),
     });
   } catch (error) {
     const note = `Enrichment failed: ${(error as Error).message}`;
-    await store.saveEnrichment(userId, ingested.pursuitId, null, {status: 'error', note});
-    outcomes.push({...base, status: `needs you: ${note}`});
+    await store.noteEnrichmentDeferred(userId, ingested.pursuitId, {status: 'error', note});
+    outcomes.push({...base, status: `deferred: ${note}`});
     continue;
   }
-  const snapshot = snapshotFromAgent(result);
-  const summary = {
-    status: result.execution, listingStatus: result.listingStatus, listingUrl: result.listingUrl,
-    agents: result.agents.map(agent => ({name: agent.name, email: agent.email?.value ?? null, phone: agent.phone?.value ?? null, attribution: agent.attribution.url})),
-    officeContacts: result.officeContacts.map(c => ({name: c.name, email: c.email?.value ?? null})),
-    directContacts: result.directContacts.map(r => ({name: r.name, email: r.email, relationship: r.relationship})),
-    cost: result.cost, notes: result.notes, checkedAt: result.checkedAt,
-    ...(snapshot ? {} : {note: result.listingStatus === 'owner_listed' ? 'Owner-listed: no broker to contact' : 'No verified contact email found'}),
-  };
+  const mapped = agentResultForPipeline(result);
+  const failure = classifyEnrichment(mapped);
+  const snapshot = failure ? null : contactSnapshotFromEnrichment(mapped);
+  const summary = {...summarizeEnrichment(mapped), ...(failure ? {note: failure.detail} : {})};
+  if (failure && isRetryable(failure)) {
+    await store.noteEnrichmentDeferred(userId, ingested.pursuitId, summary);
+    outcomes.push({...base, status: `deferred: ${failure.detail}`});
+    continue;
+  }
   await store.saveEnrichment(userId, ingested.pursuitId, snapshot, summary);
   outcomes.push({...base, status: snapshot ? 'ready' : 'needs you: no contact', contacts: snapshot?.contacts ?? []});
 }
@@ -247,7 +218,7 @@ for (const outcome of outcomes) {
   }
 }
 
-if (!(await store.isProcessed(userId, message.id))) {
+if (!outcomes.some(outcome => outcome.status.startsWith('deferred:')) && !(await store.isProcessed(userId, message.id))) {
   await store.markProcessed(userId, message.id, 'alert');
 }
 

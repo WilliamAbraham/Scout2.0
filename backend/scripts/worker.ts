@@ -6,6 +6,8 @@ import type {gmail_v1} from 'googleapis';
 
 import {client, db} from '../src/db/index.ts';
 import {BrokerEnrichment} from '../src/enrichment/service.ts';
+import {EnrichmentBudget} from '../src/enrichment/spend.ts';
+import {enrichForPipeline} from '../src/pipeline/agentEnrichment.ts';
 import {getGmailClient, getGmailSendClient} from '../src/gmail/auth.ts';
 import {assertLiveSendReady, createLiveSendMail} from '../src/outreach/delivery.ts';
 import {createOutreachPorts} from '../src/outreach/ports.ts';
@@ -33,7 +35,10 @@ import {DATA_DIR} from '../src/paths.ts';
  * this mailbox belongs to), optional TAVILY_API_KEY / FIRECRAWL_API_KEY,
  * SCOUT_CATCH_UP_DAYS (first-run window, default 2), SCOUT_MESSAGES_PER_CYCLE
  * (default 25), SCOUT_MAILBOX_QUERY (extra Gmail terms for a catch-up),
- * OPENROUTER_MODEL, WORKER_POLL_MS, WORKER_LEASE_MS.
+ * OPENROUTER_MODEL (outreach only), WORKER_POLL_MS, WORKER_LEASE_MS,
+ * SCOUT_ENRICHMENT_BUDGET_USD (above 0 switches enrichment to the research
+ * agent and caps its spend per process; default 0 keeps the free engine),
+ * SCOUT_RENTER_NAME (signs outgoing mail; unset sends no signature).
  *
  * Dry-run is the default: drafts are composed and recorded as `draft_composed`
  * events, with zero Gmail send calls. `--live` requires gmail.send re-consent
@@ -78,16 +83,35 @@ if (live) {
 const outbox = new PostgresOutbox(db);
 let sendClient: Promise<gmail_v1.Gmail> | null = null;
 
-const enrichment = new BrokerEnrichment({
-  cacheDir: path.join(DATA_DIR, 'enrichment', 'cache'),
+// Two engines. The deterministic one reads the alert's own listing page for
+// the agent's name and the brokerage site for their address, and costs nothing
+// per model token; it is the default. The research agent is more capable and
+// is charged per listing, so it runs only once a spend limit is set for it.
+const agentBudgetUsd = Number(process.env.SCOUT_ENRICHMENT_BUDGET_USD ?? 0);
+const providerKeys = {
   ...(process.env.TAVILY_API_KEY ? {tavilyKey: process.env.TAVILY_API_KEY} : {}),
   ...(process.env.FIRECRAWL_API_KEY ? {firecrawlKey: process.env.FIRECRAWL_API_KEY} : {}),
+};
+
+const enrichment = new BrokerEnrichment({
+  cacheDir: path.join(DATA_DIR, 'enrichment', 'cache'),
+  ...providerKeys,
   log,
 });
 
+const agentOptions = {
+  apiKey: openRouterApiKey,
+  budget: new EnrichmentBudget(agentBudgetUsd),
+  cacheDir: path.join(DATA_DIR, 'enrichment', 'agent-cache'),
+  ...providerKeys,
+  log,
+};
+
+if (agentBudgetUsd > 0) log(`enrichment: research agent, budget $${agentBudgetUsd}`);
+
 const alertDeps: AlertPipelineDeps = {
   store,
-  enrich: input => enrichment.run(input),
+  enrich: input => agentBudgetUsd > 0 ? enrichForPipeline(input, agentOptions) : enrichment.run(input),
 };
 
 // Identifies this process in the lease and the run log.

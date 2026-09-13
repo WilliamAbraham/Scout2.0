@@ -1,5 +1,7 @@
 # Broker enrichment
 
+This page describes the **legacy** `BrokerEnrichment` service. The worker, one-email runner and default `npm run enrich` now use [`enrichWithAgent()`](enrichment/openrouter-agent.md). See the [12-listing evaluation](enrichment/active-12-agent-test-2026-09-12.md) for measured coverage and limitations.
+
 The standalone TypeScript service takes email listing fields and returns supported agents, separately labeled contact routes, evidence, and a review status. Direct adapters run first for Canvas, Centennial and Next Step. Tavily is the preferred search provider for the generic fallback when configured. Firecrawl renders pages and performs structured extraction, and supplies fallback search when no Tavily key is present. No LangChain or OpenAI dependency is required.
 
 The [updated research](broker-enrichment-research-v2.md) and [Word report](broker-enrichment-research-v2.docx) explain the five-listing benchmark and technology comparisons. The [earlier observed summary](enrichment/118-mulberry-r4.observed.json) records the DALLAL run. These remain bounded implementations, not proof of complete market coverage.
@@ -9,8 +11,8 @@ The [updated research](broker-enrichment-research-v2.md) and [Word report](broke
 Use Node 24+ and install dependencies from the repository root with `npm ci`. From that directory:
 
 ```sh
-npm run enrich -- backend/fixtures/enrichment/118-mulberry-r4.json
-npm run enrich -- backend/fixtures/enrichment/118-mulberry-r4.json --refresh --max-calls 32
+npm run enrich:legacy -- backend/fixtures/enrichment/118-mulberry-r4.json
+npm run enrich:legacy -- backend/fixtures/enrichment/118-mulberry-r4.json --refresh --max-calls 32
 npm run test:enrichment -w backend
 npm run typecheck:enrichment -w backend
 ```
@@ -66,7 +68,8 @@ Direct reads allow only reviewed HTTPS origins, validate each redirect, limit re
 2. Search that domain for the exact address and unit, supplementing results with relevant catalog links.
 3. Read candidate detail pages and extract all explicitly attached agents. Validate source evidence, exact unit, street, brokerage, beds/baths, rental status and reported contradictions. A price change is a warning. Conflicting matching-page rosters require review.
 4. Validate agent names, email syntax, contact excerpts and phone presence. Follow explicitly linked profiles to recover missing contacts. On a profile with a matching name heading, reconstruct a contiguous source excerpt when the model rearranges its quotation. Never infer an email pattern.
-5. If no verified detail page exists, read the official team directory and test a bounded set of names against exact-address/unit search results. These contacts always remain `candidateAgents`. Portal URLs are never scraped by this workflow.
+5. If no verified detail page exists, read the official team directory and test a bounded set of names against exact-address/unit search results. These contacts always remain `candidateAgents`.
+6. If brokerage research yields no agents, read the supplied public StreetEasy listing and, if needed, one address-derived candidate. Extract licensed people only from the semantic Listed by section and require matching street, unit, rent and brokerage. Retain all matching cards with profile and attribution URLs; unrelated recommended profiles are excluded. Names remain available when email/phone are missing. The bounded reader rejects unsafe redirects, blocked/non-HTML responses and pages over 2 MB, with a 10-second timeout per candidate. This fallback adds no model/search calls. `directOnly` skips it, and `listingFallback: false` disables it for provider-only comparisons. Blocked pages or unrecognized markup can still fail.
 
 Sources are retained separately: `attributionSourceUrl` supports the listing relationship; `emailSourceUrl` and `phoneSourceUrl` support each contact field. `sourceUrl` identifies the latest contact page, so consumers should use the field-specific URLs when contacts came from more than one page. Source excerpts and the original selected listing extraction remain available for review.
 

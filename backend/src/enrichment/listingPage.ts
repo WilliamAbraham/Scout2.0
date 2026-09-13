@@ -27,7 +27,34 @@ export function candidateListingUrl(input: {address: string; unit: string; city:
   return `https://streeteasy.com/building/${slug}-new_york/${input.unit.toLowerCase()}`;
 }
 
-export interface ListingPage {url: string; content: string; heading?: string; price?: number}
+export interface ListingPage {
+  url: string; content: string; heading?: string; price?: number;
+  brokers?: {name: string; brokerage: string; profileUrl: string; evidence: string}[];
+}
+
+function listingBrokers(html: string): NonNullable<ListingPage['brokers']> {
+  const $ = load(html), brokers = new Map<string, NonNullable<ListingPage['brokers']>[number]>();
+  const compact = (text: string) => text.replace(/\s+/g, ' ').trim();
+  const license = /^Licensed .*\b(?:Salesperson|Broker)\b/i;
+  // The immediate Listed by container contains the roster, not recommended
+  // agents elsewhere on the page. Use semantic text, not generated CSS hashes.
+  for (const label of $('p,h2,h3').filter((_, el) => compact($(el).text()) === 'Listed by').toArray()) {
+    const section = $(label).parent();
+    for (const el of section.find('a[href]').toArray()) {
+      const link = $(el), name = compact(link.text());
+      let profile: URL;
+      try {profile = new URL(link.attr('href')!, 'https://streeteasy.com');} catch {continue;}
+      if (!name || profile.origin !== 'https://streeteasy.com' || !/^\/profile\/\d+\/?$/.test(profile.pathname)) continue;
+      const card = link.parentsUntil(section.get(0)).filter((_, parent) =>
+        $(parent).find('p').toArray().some(p => license.test(compact($(p).text())))).first();
+      if (!card.length) continue;
+      const brokerage = compact(card.find('p').filter((_, p) => !license.test(compact($(p).text()))).first().text());
+      if (!brokerage) continue;
+      brokers.set(profile.href, {name, brokerage, profileUrl: profile.href, evidence: compact(card.text())});
+    }
+  }
+  return [...brokers.values()];
+}
 
 export function listingPageText(html: string): string {
   const $ = load(html);
@@ -82,7 +109,8 @@ export async function readListingPage(value: string, fetcher: typeof fetch = fet
     const $ = load(Buffer.concat(chunks).toString('utf8'));
     const priceText = $('h4').first().text().trim();
     const price = /^\$[\d,]+$/.test(priceText) ? Number(priceText.replace(/[$,]/g, '')) : undefined;
-    return {url, content, heading: $('h1').first().text().trim(), ...(price !== undefined ? {price} : {})};
+    return {url, content, heading: $('h1').first().text().trim(), brokers: listingBrokers(Buffer.concat(chunks).toString('utf8')),
+      ...(price !== undefined ? {price} : {})};
   }
   throw new Error('Listing redirect limit reached');
 }

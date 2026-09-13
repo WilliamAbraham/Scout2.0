@@ -94,11 +94,13 @@ export function summarizeEnrichment(result: EnrichmentResult): Record<string, un
       phone: agent.phone,
       role: agent.role,
       profileUrl: agent.profileUrl,
+      sourceUrl: agent.attributionSourceUrl,
     })),
     candidateAgents: result.candidateAgents.map(agent => agent.name),
     issues: result.issues,
     warnings: result.warnings,
     checkedAt: result.checkedAt,
+    ...(result.research ? {research: result.research} : {}),
   };
 }
 
@@ -109,7 +111,7 @@ export function summarizeEnrichment(result: EnrichmentResult): Record<string, un
  */
 export function classifyEnrichment(result: EnrichmentResult): EnrichmentFailure | null {
   if (result.execution === 'budget_exhausted') {
-    return {kind: 'budget_exhausted', detail: 'Daily enrichment budget is exhausted'};
+    return {kind: 'budget_exhausted', detail: 'Enrichment budget is exhausted'};
   }
   if (result.resolution === 'owner_listed') {
     return {kind: 'owner_listed', detail: 'Owner-listed: no broker to contact'};
