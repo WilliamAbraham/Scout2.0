@@ -131,7 +131,9 @@ export function ScoutDashboard({
       ? profileSummary(preferencesContext.profile)
       : account.profileSummary;
   const [demoListingState, setDemoListingState] = useState(initialListings);
-  const [view, setView] = useState<View>("Active");
+  const [view, setView] = useState<View>(
+    initialListings.some((item) => item.pursuit) ? "Active" : "All listings",
+  );
   const [selectedId, setSelectedId] = useState<string | null>(
     initialListings.find((item) => item.pursuit?.blocker)?.id ?? null,
   );

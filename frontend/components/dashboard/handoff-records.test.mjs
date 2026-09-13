@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { groupFor, statusLabel } from "./inbox-model.ts";
-import { projectRecords } from "./inbox-records.ts";
+import { projectRecords, rowsFromListingFeed } from "./inbox-records.ts";
 
 const at = "2026-09-12T18:00:00-04:00";
 const base = (pursuit = null) => ({
@@ -387,4 +387,48 @@ test("stored closure needs a dead transition reason and a decision is not inferr
   ]);
   assert.equal(decision.pursuit.closedReason, null);
   assert.equal(groupFor(decision, "Closed"), null);
+});
+
+test("listings without a user overlay still appear and do not count as a match", () => {
+  const [item] = projectRecords(rowsFromListingFeed([{
+    rental_id: "5155790",
+    address: "118 Mulberry Street #F5",
+    price: 7495,
+    bedrooms: 3,
+    bathrooms: 2,
+    listing_url: "https://streeteasy.com/rental/5155790",
+    brokerage: "DALLAL",
+    last_seen_at: at,
+    first_seen_at: at,
+    user_listings: [],
+  }]));
+  assert.equal(item.address, "118 Mulberry Street #F5");
+  assert.equal(item.assessment, "not_fit");
+  assert.equal(item.pursuit, null);
+  assert.equal(groupFor(item, "All listings"), "Not a fit");
+  assert.equal(groupFor(item, "Active"), null);
+});
+
+test("a listing feed keeps this user's match and pursuit when present", () => {
+  const [item] = projectRecords(rowsFromListingFeed([{
+    rental_id: "rental-1",
+    address: "1 Example St",
+    price: 3200,
+    bedrooms: 1,
+    bathrooms: 1,
+    listing_url: "https://example.com/listing",
+    brokerage: null,
+    last_seen_at: at,
+    first_seen_at: at,
+    user_listings: [{
+      id: "user-listing",
+      is_match: true,
+      match_reason: "Within budget",
+      dismissed_at: null,
+      first_seen_at: at,
+      pursuits: pursuit(),
+    }],
+  }]));
+  assert.equal(item.assessment, "matched");
+  assert.equal(item.pursuit.stage, "matched");
 });

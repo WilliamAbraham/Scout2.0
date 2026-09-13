@@ -72,16 +72,11 @@ test('the migrated function matches the one recorded in rls.ts', () => {
     'rls.ts and the migration disagree about how scout_owns is defined');
 });
 
-test('the listings policy names the user_listings table correctly', () => {
-  // The listings policy spells `public.user_listings` literally, because
-  // referencing the table object there would make the two table definitions
-  // mutually recursive and TypeScript cannot infer through that. A rename
-  // would therefore break the policy at runtime rather than at compile time.
-  assert.equal(getTableName(userListings), 'user_listings');
-
+test('listings facts are readable to any signed-in user', () => {
   const policy = getTableConfig(listings).policies
-    .find(candidate => candidate.name === 'listings_select_own');
+    .find(candidate => candidate.name === 'listings_select_authenticated');
   assert.ok(policy, 'listings must keep a select policy');
+  assert.equal(getTableName(userListings), 'user_listings');
 });
 
 test('tables holding secrets are unreachable through PostgREST', () => {
@@ -119,11 +114,12 @@ test('every tenant table enables RLS and scopes its policies to the owner', () =
 
   for (const statement of statements) {
     const name = /CREATE POLICY "([^"]+)"/.exec(statement)?.[1] ?? statement;
+    assert.match(statement, /TO "authenticated"/,
+      `${name} must target the authenticated role only — never anon`);
+    if (name === 'listings_select_authenticated') continue;
     assert.match(statement, /scout_owns\(/,
       `${name} must route its ownership test through scout_owns, so roommate ` +
       'support stays a one-function change');
-    assert.match(statement, /TO "authenticated"/,
-      `${name} must target the authenticated role only — never anon`);
   }
 });
 

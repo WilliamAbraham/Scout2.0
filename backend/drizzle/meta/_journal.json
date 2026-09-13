@@ -43,6 +43,13 @@
       "when": 1789253940213,
       "tag": "0005_outreach_outbox",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789290000000,
+      "tag": "0006_listings_select_authenticated",
+      "breakpoints": true
     }
   ]
 }

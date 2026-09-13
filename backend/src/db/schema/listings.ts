@@ -43,21 +43,12 @@ export const listings = pgTable('listings', {
   check('listings_bedrooms_nonnegative', sql`${table.bedrooms} >= 0`),
   check('listings_bathrooms_nonnegative', sql`${table.bathrooms} >= 0`),
   check('listings_seen_at_order', sql`${table.lastSeenAt} >= ${table.firstSeenAt}`),
-  // A listing is readable only to users it actually surfaced for. The rows are
-  // public StreetEasy data, but the set of rows is the union of every user's
-  // alerts, which is not.
-  //
-  // `user_listings` is named literally rather than imported: referencing the
-  // table object here and its foreign key back to `listings` below would be a
-  // cycle TypeScript cannot infer through. The names are pinned by the tests
-  // in schema.test.ts.
-  pgPolicy('listings_select_own', {
+  // StreetEasy listing facts are shared. Match decisions, dismissals, and
+  // pursuits stay per-user on `user_listings`.
+  pgPolicy('listings_select_authenticated', {
     for: 'select',
     to: authenticatedRole,
-    using: sql`exists (
-      select 1 from public.user_listings ul
-      where ul.listing_id = ${table.id} and public.scout_owns(ul.user_id)
-    )`,
+    using: sql`true`,
   }),
 ]);
 

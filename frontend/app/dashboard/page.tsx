@@ -2,8 +2,11 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { ScoutDashboard } from "@/components/dashboard/scout-dashboard";
-import { projectRecords } from "@/components/dashboard/inbox-records";
-import type { StoredUserListing } from "@/components/dashboard/inbox-records";
+import {
+  projectRecords,
+  rowsFromListingFeed,
+} from "@/components/dashboard/inbox-records";
+import type { StoredListingFeed } from "@/components/dashboard/inbox-records";
 import { loadPreferences } from "@/lib/profile-server";
 import { profileSummary } from "@/lib/search-profile";
 
@@ -14,12 +17,11 @@ async function ConnectedInbox() {
   const userId = auth.claims.sub;
   const [feed, preferencesContext] = await Promise.all([
     supabase
-      .from("user_listings")
+      .from("listings")
       .select(
-        "id,is_match,match_reason,dismissed_at,first_seen_at,listings!inner(rental_id,address,price,bedrooms,bathrooms,listing_url,brokerage,last_seen_at),pursuits(id,stage,needs_human_reason,needs_human_note,needs_human_at,thread_id,enriched_at,next_follow_up_at,follow_up_count,updated_at,contact_snapshot,pursuit_events(id,type,payload,created_at))",
+        "rental_id,address,price,bedrooms,bathrooms,listing_url,brokerage,last_seen_at,first_seen_at,user_listings(id,is_match,match_reason,dismissed_at,first_seen_at,pursuits(id,stage,needs_human_reason,needs_human_note,needs_human_at,thread_id,enriched_at,next_follow_up_at,follow_up_count,updated_at,contact_snapshot,pursuit_events(id,type,payload,created_at)))",
       )
-      .eq("user_id", userId)
-      .order("first_seen_at", { ascending: false }),
+      .order("last_seen_at", { ascending: false }),
     loadPreferences(supabase, userId),
   ]);
   const error = Boolean(
@@ -52,7 +54,9 @@ async function ConnectedInbox() {
       initialListings={
         feed.error
           ? []
-          : projectRecords((feed.data ?? []) as unknown as StoredUserListing[])
+          : projectRecords(
+              rowsFromListingFeed((feed.data ?? []) as unknown as StoredListingFeed[]),
+            )
       }
       mode="live"
       preferencesContext={preferencesContext}

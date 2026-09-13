@@ -1,6 +1,10 @@
 # Scout: current engineering context
 
-Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
+Updated 2026-09-13. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
+
+## Shared listing catalog — 2026-09-13
+
+`/dashboard` now reads the global `listings` table for every signed-in user. Match, dismiss, and pursuit rows still come from that user's `user_listings` (RLS unchanged). A listing with no overlay shows as **Not a fit** and has no conversation. Migration `0006_listings_select_authenticated` replaces `listings_select_own` so authenticated users can select StreetEasy facts; `scout_owns` remains required on every other tenant policy. A feed with no pursuits opens on **All listings**.
 
 ## Brokerage contact visibility — 2026-09-12
 

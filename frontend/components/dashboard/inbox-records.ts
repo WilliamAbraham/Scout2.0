@@ -58,6 +58,68 @@ export type StoredUserListing = {
   pursuits: StoredPursuit | null;
 };
 
+export type StoredListingFeed = {
+  rental_id: string;
+  address: string;
+  price: number | string;
+  bedrooms: number | string | null;
+  bathrooms: number | string | null;
+  listing_url: string;
+  brokerage?: string | null;
+  last_seen_at?: string | null;
+  first_seen_at: string;
+  user_listings?: Array<{
+    id: string;
+    is_match: boolean | null;
+    match_reason: string | null;
+    dismissed_at: string | null;
+    first_seen_at: string;
+    pursuits: StoredPursuit | StoredPursuit[] | null;
+  }> | null;
+};
+
+function one<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+/** Flatten the global listing catalog onto this user's optional match/pursuit. */
+export function rowsFromListingFeed(rows: StoredListingFeed[]): StoredUserListing[] {
+  return rows.map((row) => {
+    const overlay = one(row.user_listings);
+    const listings = {
+      rental_id: row.rental_id,
+      address: row.address,
+      price: row.price,
+      bedrooms: row.bedrooms,
+      bathrooms: row.bathrooms,
+      listing_url: row.listing_url,
+      brokerage: row.brokerage,
+      last_seen_at: row.last_seen_at,
+    };
+    if (!overlay) {
+      return {
+        id: `listing:${row.rental_id}`,
+        is_match: false,
+        match_reason: null,
+        dismissed_at: null,
+        first_seen_at: row.first_seen_at,
+        listings,
+        pursuits: null,
+      };
+    }
+    return {
+      id: overlay.id,
+      is_match: overlay.is_match,
+      match_reason: overlay.match_reason,
+      dismissed_at: overlay.dismissed_at,
+      first_seen_at: overlay.first_seen_at,
+      listings,
+      pursuits: one(overlay.pursuits),
+    };
+  });
+}
+
 const requests: Record<BlockerReason, string> = {
   no_contact: "Add a broker contact",
   unanswerable_question: "Answer the broker’s question",
