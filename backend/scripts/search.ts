@@ -134,18 +134,33 @@ try {
     emit({phase: 'send', state: 'started', userId, ready: ready.length});
     let sent = 0;
     let skipped = 0;
+    // Why the turns that did not send declined. "Nothing was sent" is not a
+    // usable answer on its own — the daily cap and a pursuit that is simply
+    // not ready call for completely different responses from the owner.
+    const reasons = new Map<string, number>();
+    const note = (reason: string) => reasons.set(reason, (reasons.get(reason) ?? 0) + 1);
     const at = new Date();
     for (const [index, row] of ready.entries()) {
       const input = await store.loadTurnInput(userId, row.id, 'open', null);
-      if (!input) { skipped += 1; continue; }
+      if (!input) { skipped += 1; note('not_loadable'); continue; }
       const sendsToday = await store.countSendsToday(userId, at);
       const result = await runTurn({...input, sendsToday, now: at}, ports);
       await store.persistTurn(userId, row.id, 'open', result);
       const didSend = result.actions.some(action => action.type === 'send');
-      if (didSend) sent += 1; else skipped += 1;
+      if (didSend) {
+        sent += 1;
+      } else {
+        skipped += 1;
+        for (const action of result.actions) {
+          note(action.type === 'noop' ? action.reason ?? 'noop' : action.type);
+        }
+      }
       emit({phase: 'send', state: 'progress', done: index + 1, total: ready.length, sent, skipped});
     }
-    emit({phase: 'send', state: 'done', ready: ready.length, sent, skipped});
+    emit({
+      phase: 'send', state: 'done', ready: ready.length, sent, skipped,
+      reasons: Object.fromEntries(reasons),
+    });
   }
 } finally {
   await client.end();

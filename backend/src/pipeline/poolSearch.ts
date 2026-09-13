@@ -1,11 +1,16 @@
-import {and, desc, eq, sql} from 'drizzle-orm';
+import {and, desc, eq, isNull, or, sql} from 'drizzle-orm';
+import type {SQL} from 'drizzle-orm';
+import type {AnyPgColumn} from 'drizzle-orm/pg-core';
 
 import type {db as Database} from '../db/index.ts';
 import {listings, userListings} from '../db/schema/listings.ts';
 import {pursuitEvents, pursuits} from '../db/schema/pursuits.ts';
 import type {EmailListing, EnrichmentResult} from '../enrichment/service.ts';
 import type {Listing as GmailListing} from '../gmail/listings.ts';
-import {processListingAlert} from './alert.ts';
+import {classifyEnrichment, processListingAlert, summarizeEnrichment} from './alert.ts';
+import {contactSnapshotFromEnrichment} from './contacts.ts';
+import {isRetryable} from './contracts.ts';
+import {gmailListingToEmailInput} from './listingInput.ts';
 import type {AlertPipelineDeps, AlertListingOutcome, AlertStore} from './alert.ts';
 
 /**
@@ -42,6 +47,10 @@ export type PoolSearchReport = {
   fromLive: number;
   /** Rows left unscored because the time budget ran out. */
   remaining: number;
+  /** Already-matched pursuits whose enrichment was attempted again. */
+  retried: number;
+  /** Of those, how many now hold a contact and are ready to open. */
+  unblocked: number;
 };
 
 export type PoolSearchDeps = {
@@ -153,10 +162,12 @@ export function enrichmentFromSummary(
     }];
   });
 
-  // Nothing reachable was recorded, so there is no saving in reusing it: let
-  // the caller run the engine, which may do better than the attempt that
-  // produced this payload.
-  if (agents.length === 0 && contactRoutes.length === 0) return null;
+  // No mailbox was recorded, so there is no saving in reusing this: a name
+  // without an email cannot become a contact, and reusing it would skip the
+  // research that might find one. Let the caller run the engine instead.
+  const reachable = agents.some(agent => agent.email)
+    || contactRoutes.some(route => route.email && route.relationship !== 'unit_conflict');
+  if (!reachable) return null;
 
   return {
     status: status as EnrichmentResult['status'],
@@ -178,13 +189,71 @@ export function enrichmentFromSummary(
   };
 }
 
-/** An enrichment event that recorded at least one way to reach someone. */
-const HAS_CONTACT = sql`(
-  jsonb_array_length(coalesce(${pursuitEvents.payload}->'agents', '[]'::jsonb)) > 0
-  or jsonb_array_length(coalesce(${pursuitEvents.payload}->'contactRoutes', '[]'::jsonb)) > 0
+/**
+ * An enrichment payload that recorded a mailbox someone can actually be
+ * reached at.
+ *
+ * A recorded agent is not the same as a reachable one: the listing-page
+ * fallback often recovers a name with no email, which `contactSnapshot`
+ * cannot use. Matching on "has agents" would reuse those and produce a
+ * pursuit still blocked for want of a contact, having skipped the research
+ * that might have found one. The condition therefore mirrors
+ * `contactSnapshotFromEnrichment` exactly, down to ignoring a route whose
+ * unit contradicts the listing.
+ */
+const hasReachableContact = (payload: SQL | AnyPgColumn) => sql`(
+  (${payload}->>'outreachReady')::boolean is true
+  and (
+  exists (
+    select 1 from jsonb_array_elements(coalesce(${payload}->'agents', '[]'::jsonb)) agent
+    where nullif(agent->>'email', '') is not null
+  )
+  or exists (
+    select 1 from jsonb_array_elements(coalesce(${payload}->'contactRoutes', '[]'::jsonb)) route
+    where nullif(route->>'email', '') is not null
+      and coalesce(route->>'relationship', '') <> 'unit_conflict'
+  ))
+)`;
+
+const HAS_CONTACT = hasReachableContact(pursuitEvents.payload);
+
+/**
+ * Does this listing already have an enrichment worth reusing? The same
+ * condition as `recordedEnrichment`, so an ordering built on it cannot promise
+ * a cache hit that the lookup then declines.
+ */
+const reusableFor = (listingId: SQL | AnyPgColumn) => sql`exists (
+  select 1 from ${userListings} ul
+  join ${pursuits} p on p.user_listing_id = ul.id
+  join ${pursuitEvents} e on e.pursuit_id = p.id
+  where ul.listing_id = ${listingId} and e.type = 'enriched'
+    and ${hasReachableContact(sql`e.payload`)}
 )`;
 
 export const REUSED_WARNING = 'Reused a recorded enrichment of this listing rather than researching it again';
+
+/**
+ * A recorded enrichment for this listing that would hand the pipeline a
+ * contact, rebuilt and ready to use — or null, meaning research it properly.
+ *
+ * The verdict is recomputed rather than trusted: a reused result must pass the
+ * same `classifyEnrichment` and `contactSnapshot` checks a fresh one does. That
+ * is what stops the retry pass from being a no-op. A pursuit blocked for want
+ * of a contact is blocked *because* of its own recorded enrichment, so
+ * replaying that record reproduces the block exactly; only a record that
+ * clears both checks — from another user's luckier run, or a later, better
+ * engine — is worth having, and anything else falls through to the engine.
+ */
+function reusableEnrichment(
+  payload: Record<string, unknown>,
+  input: EmailListing,
+): EnrichmentResult | null {
+  const rebuilt = enrichmentFromSummary(payload, input);
+  if (!rebuilt) return null;
+  if (classifyEnrichment(rebuilt) !== null) return null;
+  if (contactSnapshotFromEnrichment(rebuilt) === null) return null;
+  return rebuilt;
+}
 
 /**
  * The newest recorded enrichment for this rental id that actually reached
@@ -219,17 +288,7 @@ async function unscoredPool(db: typeof Database, userId: string, options: {limit
       and ${userListings.userId} = ${userId}
       ${options.rescore ? sql`and ${userListings.isMatch} is not null` : sql``}
   )`;
-  // Does this listing have an enrichment worth reusing? Same condition as
-  // `recordedEnrichment`, so the ordering below cannot promise a cache hit
-  // that the lookup then declines.
-  const reusable = sql`exists (
-    select 1 from ${userListings} ul
-    join ${pursuits} p on p.user_listing_id = ul.id
-    join ${pursuitEvents} e on e.pursuit_id = p.id
-    where ul.listing_id = ${listings.id} and e.type = 'enriched'
-      and (jsonb_array_length(coalesce(e.payload->'agents', '[]'::jsonb)) > 0
-        or jsonb_array_length(coalesce(e.payload->'contactRoutes', '[]'::jsonb)) > 0)
-  )`;
+  const reusable = reusableFor(listings.id);
   const query = db.select({
     rentalId: listings.rentalId,
     address: listings.address,
@@ -260,6 +319,7 @@ export async function runPoolSearch(userId: string, deps: PoolSearchDeps): Promi
   const report: PoolSearchReport = {
     considered: 0, matched: 0, notMatched: 0, ready: 0,
     needsHuman: 0, deferred: 0, errors: 0, fromCache: 0, fromLive: 0, remaining: 0,
+    retried: 0, unblocked: 0,
   };
   const deadline = deps.budgetMs === undefined ? null : Date.now() + deps.budgetMs;
   const pool = await unscoredPool(deps.db, userId, {limit: deps.limit, rescore: deps.rescore});
@@ -277,7 +337,7 @@ export async function runPoolSearch(userId: string, deps: PoolSearchDeps): Promi
       store: deps.store,
       enrich: async input => {
         const saved = await recordedEnrichment(deps.db, row.rentalId);
-        const reused = saved ? enrichmentFromSummary(saved, input) : null;
+        const reused = saved ? reusableEnrichment(saved, input) : null;
         if (reused) {
           usedCache = true;
           deps.log?.(`${row.rentalId}: reusing recorded enrichment`);
@@ -314,6 +374,110 @@ export async function runPoolSearch(userId: string, deps: PoolSearchDeps): Promi
     deps.onProgress?.(report.considered, pool.length);
   }
 
+  await retryStuckEnrichment(userId, deps, report, deadline);
+
   deps.log?.(`pool search done: ${JSON.stringify(report)}`);
   return report;
+}
+
+/**
+ * Matches this user already owns that never produced a contact.
+ *
+ * Scoring the pool is only half of what a re-run is worth. A pursuit parked on
+ * `no_contact` is not a settled verdict: the same apartment may have been
+ * researched successfully since — for another user, or by a later version of
+ * the enrichment engine — and that answer is sitting unused. Retrying them is
+ * what makes a second press of Start search do something for an owner whose
+ * pool is already fully scored.
+ *
+ * Only pursuits with no contact and no thread are touched, so nothing that has
+ * already been emailed, answered by the owner, or blocked on a question the
+ * owner owns is disturbed.
+ */
+async function retryStuckEnrichment(
+  userId: string,
+  deps: PoolSearchDeps,
+  report: PoolSearchReport,
+  deadline: number | null,
+): Promise<void> {
+  const stuck = await deps.db.select({
+    pursuitId: pursuits.id,
+    rentalId: listings.rentalId,
+    address: listings.address,
+    price: listings.price,
+    bedrooms: listings.bedrooms,
+    bathrooms: listings.bathrooms,
+    listingUrl: listings.listingUrl,
+    brokerage: listings.brokerage,
+  }).from(pursuits)
+    .innerJoin(userListings, eq(userListings.id, pursuits.userListingId))
+    .innerJoin(listings, eq(listings.id, userListings.listingId))
+    .where(and(
+      eq(pursuits.userId, userId),
+      eq(pursuits.stage, 'matched'),
+      isNull(pursuits.contactSnapshot),
+      isNull(pursuits.threadId),
+      // Anything other than a missing contact is the owner's to resolve.
+      or(isNull(pursuits.needsHumanReason), eq(pursuits.needsHumanReason, 'no_contact')),
+    ))
+    // Same reasoning as the pool ordering: the ones that can be answered from
+    // a recorded result cost nothing, so they resolve first and the owner sees
+    // contacts appear instead of waiting behind a queue of live lookups.
+    .orderBy(sql`${reusableFor(userListings.listingId)} desc`, desc(pursuits.updatedAt))
+    .limit(deps.limit ?? 200);
+
+  if (stuck.length === 0) return;
+  deps.log?.(`retrying enrichment for ${stuck.length} match(es) with no contact`);
+
+  for (const row of stuck) {
+    if (deadline !== null && Date.now() >= deadline) {
+      deps.log?.('time budget reached; the remaining retries wait for the next pass');
+      return;
+    }
+    report.retried += 1;
+    try {
+      // Inside the try on purpose: building the enrichment input validates the
+      // listing, and a stored address with no unit fails it. That is the same
+      // outcome `processListingAlert` already gives such a row — one listing
+      // recorded as an error — and must not take the rest of the pass with it.
+      const input = gmailListingToEmailInput(
+        toGmailListing({...row, firstSeenAt: new Date(), sourceMessageId: null}),
+      );
+      const saved = await recordedEnrichment(deps.db, row.rentalId);
+      const reused = saved ? reusableEnrichment(saved, input) : null;
+      if (reused) {
+        report.fromCache += 1;
+        deps.log?.(`${row.rentalId}: reusing recorded enrichment`);
+      } else {
+        report.fromLive += 1;
+        deps.log?.(`${row.rentalId}: re-enriching ${row.address}`);
+      }
+      const enrichment = reused ?? await deps.enrich(input);
+      const summary = summarizeEnrichment(enrichment);
+      const failure = classifyEnrichment(enrichment);
+
+      if (failure && isRetryable(failure)) {
+        await deps.store.noteEnrichmentDeferred(userId, row.pursuitId, {...summary, note: failure.detail});
+        report.deferred += 1;
+        continue;
+      }
+      const snapshot = failure ? null : contactSnapshotFromEnrichment(enrichment);
+      await deps.store.saveEnrichment(userId, row.pursuitId, snapshot, {
+        ...summary,
+        ...(failure ? {note: failure.detail} : {}),
+      });
+      if (snapshot) {
+        report.unblocked += 1;
+        report.ready += 1;
+      } else {
+        report.needsHuman += 1;
+      }
+    } catch (error) {
+      // A provider failure is not a verdict about the listing. The pursuit
+      // keeps the state it had, and the next press tries again.
+      report.errors += 1;
+      deps.log?.(`${row.rentalId}: retry failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    deps.onProgress?.(report.considered + report.retried, report.considered + stuck.length);
+  }
 }

@@ -12,7 +12,17 @@ The demo path is wired end to end: **Start search** and **Send** on `/dashboard`
 
 Verified: 241 backend and 41 frontend tests pass; both workspace typechecks pass. Against the live database, a pool pass scored 25 listings for the demo owner (`9f716093`), 9 of them outreach-ready, with 12/12 cache hits on a cached-first run and successful live enrichment on rows with no recorded result. One live send was executed and confirmed in Gmail: from `williamsaibroker@gmail.com`, subject "Tour request: 444 East 13th Street #9", redirected to the demo mailbox. Spawning the CLI from Next's working directory was verified directly (exit 0, parsed report).
 
-Not verified: the authenticated dashboard in a browser — sign-in requires the owner's password, which was not entered. The buttons, their counts and the refresh path are unverified against a real session. Two of the demo owner's ready pursuits (118 Mulberry #F5, 252 Mott #5/6) name listings the other user already emailed; pursuits are per-user, so Send would mail them again. Harmless while redirected.
+Browser-verified on 2026-09-13 against a real session (signed in as `williamja100@gmail.com`, whose account already owns the whole pool). Start search reported "retried 2 matches that had no contact, 1 now reachable"; Send confirmed "Send 30 opening emails?", then reported **"Sent 10 emails"** and the button dropped to 20. All ten are in the Gmail Sent folder, from `williamsaibroker@gmail.com`, each redirected to that same mailbox.
+
+Four defects were found and fixed by running it rather than reading it:
+- The retry pass built its enrichment input outside the try, so one stored address with no unit crashed the whole run. It is now per-listing, matching what the alert path already does with such a row.
+- Reuse trusted the recorded payload's own verdict, which made the retry a no-op: a pursuit blocked for want of a contact is blocked *by* its own enrichment, so replaying that record reproduced the block. A reuse is now recomputed through `classifyEnrichment` and `contactSnapshot` and only accepted if it actually yields a contact — cache hits are always an improvement or they are not hits.
+- The cache predicate matched "has agents", which reused name-only research that can never produce a mailbox. It now requires a reachable email and an outreach-ready run, mirroring `contactSnapshotFromEnrichment` down to ignoring a `unit_conflict` route.
+- The 90s kill fired mid-enrichment on a healthy run and reported a flat failure for work that had been saved. The margin is now 180s against a 30s budget, and an interrupted run reports the listings it did finish.
+
+`daily_send_cap` was raised from 10 to 100 (the schema's ceiling) for both profiles at the owner's request — the first Send attempt correctly refused all 10 because the day's cap was already spent. The guardrail itself is unchanged; only this deployment's value moved. The send command now reports *why* turns declined (`reasons`), so a cap refusal reads as a cap refusal instead of "not ready".
+
+Not verified: the demo account `williamsaibroker@gmail.com` in a browser — sign-in requires the owner's password, which was not entered. The buttons, their counts and the refresh path are unverified against a real session. Two of the demo owner's ready pursuits (118 Mulberry #F5, 252 Mott #5/6) name listings the other user already emailed; pursuits are per-user, so Send would mail them again. Harmless while redirected.
 
 
 Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
