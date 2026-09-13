@@ -2,10 +2,10 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdir, readFile, rename, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {load} from 'cheerio';
-import {canonicalListingUrl, candidateListingUrl, readListingPage} from './listingPage.ts';
+import {canonicalListingUrl} from './listingPage.ts';
 import {businessPhone, resolveDirect} from './sources.ts';
-import {listingAvailability, parseListedBy, permittedStreetEasyUrl, verifyStreetEasyListing} from './streetEasy.ts';
-import type {ListedBy, ListedByAgent} from './streetEasy.ts';
+import {findListingAgents, streetEasyListingUrl} from './listingAgents.ts';
+import type {ListingAgentsResult} from './listingAgents.ts';
 import type {ContactRoute} from './sources.ts';
 
 export interface EmailListing {
@@ -723,45 +723,55 @@ export class BrokerEnrichment {
    * listing page and contact details from the brokerage; the two are recorded
    * separately so a reader can see which source supports which field.
    */
-  private async fromListedBy(input: EmailListing, listed: ListedBy,
+  private async fromListedBy(input: EmailListing, listed: ListingAgentsResult,
     direct: Awaited<ReturnType<typeof resolveDirect>>): Promise<EnrichmentResult> {
-    const issues = [...listed.issues, ...(direct?.issues ?? [])];
+    const issues = [...listed.notes, ...(direct?.issues ?? [])];
     const warnings = [...(direct?.warnings ?? [])];
     if (listed.availability) warnings.push(`StreetEasy shows "${listed.availability}"; the agent is named but the unit may be gone`);
-    // A brokerage's own StreetEasy account is a real route but not a person.
-    const people = listed.agents.filter(agent => !agent.isCompanyAccount);
-    const roster = people.length ? people : listed.agents;
+    const listingUrl = listed.listingUrl;
 
+    const agents: Contact[] = listed.agents.map(agent => ({
+      name: agent.name, role: agent.role, profileUrl: agent.profileUrl,
+      email: agent.email, phone: agent.phone,
+      attributionEvidence: [agent.name, agent.role, agent.brokerage].filter(Boolean).join(' — '),
+      contactEvidence: agent.context ?? '',
+      sourceUrl: agent.sources.at(-1) ?? listingUrl ?? '',
+      attributionSourceUrl: listingUrl ?? '',
+      emailSourceUrl: agent.email ? agent.sources.at(-1) ?? null : null,
+      phoneSourceUrl: agent.phone ? agent.sources.at(-1) ?? null : null,
+    }));
+
+    // The brokerage's own site is consulted only for the ones search missed.
     let business: {url: string; page: PageData} | undefined;
-    let contacts = new Map<string, Contact>();
-    let contactsAttempted = false;
-    try {
-      business = await this.brokerageSite(input, direct?.brokerageUrl ?? undefined, issues);
-      if (!business) issues.push('Could not verify the brokerage website; searching the open web for each agent');
-      contacts = await this.contactsForNames(roster, business, input.brokerage, issues);
-      contactsAttempted = true;
-    } catch (error) {issues.push(`Contact lookup stopped: ${error instanceof Error ? error.message : String(error)}`);}
+    const missing = listed.agents.filter(agent => !agent.email);
+    if (missing.length) {
+      try {
+        business = await this.brokerageSite(input, direct?.brokerageUrl ?? undefined, issues);
+        const named = missing.map(agent => ({
+          name: agent.name, profileUrl: agent.profileUrl ?? agent.name, role: agent.role,
+          brokerage: agent.brokerage, isCompanyAccount: false, evidence: agent.name,
+        }));
+        const contacts = await this.contactsForNames(named, business, input.brokerage, issues);
+        for (const agent of agents) {
+          const found = contacts.get(agent.profileUrl ?? agent.name);
+          if (!found?.email) continue;
+          agent.email = found.email;
+          agent.phone ??= found.phone;
+          agent.contactEvidence = found.contactEvidence;
+          agent.sourceUrl = found.sourceUrl;
+          agent.emailSourceUrl = found.emailSourceUrl;
+          agent.phoneSourceUrl = found.phoneSourceUrl;
+        }
+      } catch (error) {issues.push(`Contact lookup stopped: ${error instanceof Error ? error.message : String(error)}`);}
+    }
 
-    const agents: Contact[] = roster.map(agent => {
-      const contact = contacts.get(agent.profileUrl);
-      return {
-        name: agent.name, role: agent.role,
-        profileUrl: contact?.profileUrl ?? agent.profileUrl,
-        email: contact?.email ?? null, phone: contact?.phone ?? null,
-        attributionEvidence: agent.evidence, contactEvidence: contact?.contactEvidence ?? '',
-        sourceUrl: contact?.sourceUrl ?? listed.url, attributionSourceUrl: listed.url,
-        emailSourceUrl: contact?.email ? contact.emailSourceUrl : null,
-        phoneSourceUrl: contact?.phone ? contact.phoneSourceUrl : null,
-      };
-    });
     for (const agent of agents) if (!agent.email) issues.push(`No email recovered for ${agent.name}`);
     const reachable = agents.filter(agent => agent.email);
 
     const result = this.result(input, {
       status: reachable.length ? 'source_matched' : 'partial',
-      execution: reachable.length || contactsAttempted ? 'completed' : 'partial',
       brokerageUrl: business?.url ?? direct?.brokerageUrl ?? null,
-      listingUrl: listed.url, agents,
+      listingUrl, agents,
       rosterCompleteness: reachable.length === agents.length ? 'source_only' : 'partial',
       outreachReady: reachable.length > 0 && !listed.availability,
       contactRoutes: direct?.contactRoutes ?? [],
@@ -771,75 +781,20 @@ export class BrokerEnrichment {
     return business ? this.withOfficeRoute(result, input, business) : result;
   }
 
-  private async listedByAgents(input: EmailListing): Promise<ListedBy | undefined> {
-    const url = input.listingUrl;
-    if (!url || !permittedStreetEasyUrl(url) || this.options.listingFallback === false) return undefined;
-    // A plain request costs nothing and usually succeeds, but StreetEasy
-    // answers some of them with a 403. Rendering is the reliable path and the
-    // paid one, so it is the fallback rather than the default.
-    const direct = await this.listedByDirect(input, url);
-    if (direct && 'listed' in direct) return direct.listed;
-    // A page that was read and is a different apartment stays refused. Paying
-    // to render the same URL would buy the same answer.
-    if (direct) return {url, agents: [], availability: null, issues: [direct.rejected]};
-    const page = await this.scrape(url, undefined, undefined, permittedStreetEasyUrl);
-    const issues = verifyStreetEasyListing(input, page.markdown);
-    if (issues.length) return {url, agents: [], availability: null, issues};
-    const agents = parseListedBy(page.markdown);
-    if (!agents.length) issues.push('StreetEasy page named no one in its Listed by block');
-    const elsewhere = agents.find(agent => agent.brokerage && !sameBrokerage(agent.brokerage, input.brokerage));
+  private async listedByAgents(input: EmailListing): Promise<ListingAgentsResult | undefined> {
+    if (!streetEasyListingUrl(input.listingUrl) || this.options.listingFallback === false) return undefined;
+    const found = await findListingAgents(input, {
+      firecrawlKey: this.options.firecrawlKey, tavilyKey: this.options.tavilyKey,
+      ...(this.options.timeoutMs === undefined ? {} : {timeoutMs: this.options.timeoutMs}),
+      ...(this.options.log ? {log: this.options.log} : {}),
+      ...(this.options.fetch ? {fetch: this.options.fetch} : {}),
+    });
+    // A roster credited to another firm is not this alert's listing team.
+    const elsewhere = found.agents.find(agent => agent.brokerage && !sameBrokerage(agent.brokerage, input.brokerage));
     if (elsewhere) {
-      return {url, agents: [], availability: null,
-        issues: [`Listed by credits ${elsewhere.brokerage!}, not ${input.brokerage}`]};
+      return {...found, agents: [], notes: [...found.notes, `Listed by credits ${elsewhere.brokerage!}, not ${input.brokerage}`]};
     }
-    return {url, agents, availability: listingAvailability(page.markdown), issues};
-  }
-
-  /**
-   * The unrendered listing page, when StreetEasy serves it and it verifies.
-   * A blocked rental URL can still recover through the derived unit URL.
-   */
-  private async listedByDirect(input: EmailListing, supplied: string):
-    Promise<{listed: ListedBy} | {rejected: string} | undefined> {
-    let rejected: string | undefined;
-    for (const url of [...new Set([supplied, candidateListingUrl(input)].filter((value): value is string => !!value))]) {
-      const found = await this.listedByOne(input, url);
-      if (found && 'listed' in found) return found;
-      if (found) rejected ??= found.rejected;
-    }
-    return rejected === undefined ? undefined : {rejected};
-  }
-
-  private async listedByOne(input: EmailListing, url: string): Promise<{listed: ListedBy} | {rejected: string} | undefined> {
-    const attempt: JsonObject = {provider: 'listing_page', url, fetchedAt: new Date().toISOString()};
-    this.attempts.push(attempt);
-    try {
-      const page = await readListingPage(url, this.options.fetch ?? fetch);
-      const heading = /^(.*?)\s+#(.+)$/.exec(page.heading ?? '');
-      if (!heading || normalizeAddress(heading[1]!) !== normalizeAddress(input.address)
-        || normalizeUnit(heading[2]!) !== normalizeUnit(input.unit)) throw new Error('Heading is a different apartment');
-      if (page.price !== input.price) throw new Error('Listing rent missing or conflicts with the alert');
-      const brokers = page.brokers ?? [];
-      if (!brokers.length) throw new Error('No Listed by roster on the page');
-      // A roster credited to another firm is not this alert's listing team.
-      const elsewhere = brokers.find(broker => !sameBrokerage(broker.brokerage, input.brokerage));
-      if (elsewhere) throw new Error(`Listed by credits ${elsewhere.brokerage}, not ${input.brokerage}`);
-      return {listed: {
-        url: page.url,
-        availability: listingAvailability(page.content),
-        issues: [],
-        agents: brokers.map(broker => ({
-          name: broker.name, profileUrl: broker.profileUrl, role: null, brokerage: broker.brokerage,
-          isCompanyAccount: normalizeAddress(broker.name) === normalizeAddress(broker.brokerage),
-          evidence: `${page.heading}; Listed by ${broker.evidence}`,
-        })),
-      }};
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      attempt.error = message;
-      // Unreadable is worth another transport; read-and-wrong is not.
-      return /unavailable \(HTTP|not HTML|redirect/i.test(message) ? undefined : {rejected: message};
-    }
+    return found;
   }
 
   /** The brokerage's published roster, name to profile URL, or empty. */
@@ -874,7 +829,7 @@ export class BrokerEnrichment {
    * directories are commonly paginated by letter and several brokerages
    * publish none at all, so a search for the name is the fallback.
    */
-  private async contactsForNames(named: ListedByAgent[], business: {url: string; page: PageData} | undefined,
+  private async contactsForNames(named: Array<{name: string; profileUrl: string | null}>, business: {url: string; page: PageData} | undefined,
     brokerage: string, issues: string[]): Promise<Map<string, Contact>> {
     const found = new Map<string, Contact>();
     const host = business ? new URL(business.url).hostname : undefined;
@@ -893,11 +848,13 @@ export class BrokerEnrichment {
         } catch (error) {reasons.push(`search: ${error instanceof Error ? error.message : String(error)}`);}
       }
       if (!candidates.length) {issues.push(`No public page found for ${agent.name}`); continue;}
+      // Keyed the way the caller will look it up: by profile when there is one.
+      const key = agent.profileUrl ?? agent.name;
       for (const url of candidates) {
-        try {found.set(agent.profileUrl, await this.profileContact(agent.name, url)); break;}
+        try {found.set(key, await this.profileContact(agent.name, url)); break;}
         catch (error) {reasons.push(`${url}: ${error instanceof Error ? error.message : String(error)}`);}
       }
-      if (!found.has(agent.profileUrl)) issues.push(`Contact incomplete for ${agent.name}: ${reasons.join('; ')}`);
+      if (!found.has(key)) issues.push(`Contact incomplete for ${agent.name}: ${reasons.join('; ')}`);
     }
     return found;
   }
@@ -907,6 +864,9 @@ export class BrokerEnrichment {
     const input = parseEmailListing(value);
     this.running = true; this.calls = 0; this.attempts.length = 0;
     let direct: Awaited<ReturnType<typeof resolveDirect>>;
+    // Declared out here so a later failure still reports what the listing
+    // lookup found or why it found nothing.
+    const listedIssues: string[] = [];
     try {
       if (this.options.directSources !== false) {
         direct = await resolveDirect(input, this.options);
@@ -921,14 +881,14 @@ export class BrokerEnrichment {
       // StreetEasy names the person holding this listing; nothing else public
       // does. When it answers, the brokerage crawl is only asked for contact
       // details, never to rediscover the apartment.
-      let listed: ListedBy | undefined;
-      const listedIssues: string[] = [];
+      let listed: ListingAgentsResult | undefined;
       try {listed = await this.listedByAgents(input);}
       catch (error) {listedIssues.push(`StreetEasy unavailable: ${error instanceof Error ? error.message : String(error)}`);}
+      listedIssues.push(...(listed?.notes ?? []));
       if (listed?.agents.length) return await this.fromListedBy(input, listed, direct);
 
       const result = await this.resolve(input, direct?.brokerageUrl ?? undefined);
-      result.issues.unshift(...listedIssues, ...(listed?.issues ?? []));
+      result.issues.unshift(...listedIssues);
       if (direct) {
         result.contactRoutes = [...direct.contactRoutes, ...result.contactRoutes];
         result.issues.push(...direct.issues);
@@ -942,7 +902,7 @@ export class BrokerEnrichment {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return this.result(input, {...direct, status: direct?.contactRoutes.length ? 'needs_review' : 'error',
-        execution: 'error', issues: [...(direct?.issues ?? []), message]});
+        execution: 'error', issues: [...listedIssues, ...(direct?.issues ?? []), message]});
     } finally {this.running = false;}
   }
 

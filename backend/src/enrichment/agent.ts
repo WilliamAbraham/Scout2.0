@@ -9,6 +9,7 @@ import {resolveDirect} from './sources.ts';
 import type {ContactRoute} from './sources.ts';
 import {EnrichmentBudget} from './spend.ts';
 import {findAgentEmail} from './agentContacts.ts';
+import {firecrawlFetcher} from './listingAgents.ts';
 import {canonicalListingUrl, candidateListingUrl, readListingPage} from './listingPage.ts';
 import type {ListingPage} from './listingPage.ts';
 import {normalizeAddress, normalizeUnit} from './service.ts';
@@ -230,7 +231,11 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
   let listingPage: ListingPage | undefined;
   if (listingUrl) {
     try {
-      const page = await readListingPage(listingUrl, options.fetch ?? fetch);
+      // Rendered, never requested directly: StreetEasy 403s plain requests.
+      const page = await readListingPage(listingUrl, options.fetch ?? firecrawlFetcher({
+        firecrawlKey: options.firecrawlKey,
+        ...(options.log ? {log: options.log} : {}),
+      }));
       const heading = /^(.*?)\s+#(.+)$/.exec(page.heading ?? '');
       if (!heading || normalizeAddress(heading[1]!) !== normalizeAddress(input.address)
         || normalizeUnit(heading[2]!) !== normalizeUnit(input.unit)) throw new Error('Listing page heading does not match the exact address and unit');
