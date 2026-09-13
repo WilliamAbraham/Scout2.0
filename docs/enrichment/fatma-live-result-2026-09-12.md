@@ -27,7 +27,11 @@ A generated URL is a candidate, not evidence. This convention is restricted to N
 
 The initial contact output included an email from a third-party profile associated with a different brokerage. It is not a verified contact for this listing. A subsequent **offline replay of the exact saved live HTTP response and both provider responses** validated the stricter contact-identity gate: Fatma Kara remains attributed to the listing, while that email is rejected. This audit made zero new API calls. Personal contact sources now need evidence identifying the agent at the listing brokerage, or the same already-supported listing source; office duplicates and explicitly generic channels are excluded from personal fields.
 
-The live run independently proves broker-name discovery for this unit. It does not prove general recall for all listings, guarantee roster completeness, or verify Fatma's contact details. The $0.0034 charge is one observation, not a batch-cost guarantee. The worker's existing enrichment-provider wiring has not changed.
+The live run independently proves broker-name discovery for this unit. It does not prove general recall for all listings, guarantee roster completeness, or verify Fatma's contact details. The $0.0034 charge is one observation, not a batch-cost guarantee. At the time of this experimental run, the worker's enrichment-provider wiring had not changed.
+
+## Worker integration follow-up
+
+The worker's `BrokerEnrichment` service now shares the bounded listing reader and extracts licensed agents directly from semantic Listed by cards when brokerage discovery has no names. On September 12, a fresh run using the saved alert's rental URL 5157949 recovered Fatma Kara without supplying her name, screenshot or a derived URL. Paid provider requests were disabled for this verification. A new enrichment event repaired the existing pursuit; authenticated local dashboard inspection confirmed her name in the inbox and contact panel. Her personal email/phone remain unresolved, and the email blocker remains. This verifies the actual worker service and persistence path, not a continuously running worker cycle or hosted deployment.
 
 ## Verification and artifacts
 

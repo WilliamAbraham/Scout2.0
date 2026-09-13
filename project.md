@@ -61,13 +61,15 @@ The implemented schema separates global listings keyed by StreetEasy `rental_id`
 
 ## Contact enrichment direction
 
+Worker broker-name discovery (2026-09-12): the existing `BrokerEnrichment` service now uses the shared bounded listing-page reader as a fallback when brokerage lookup yields no agents. Semantic **Listed by** markup supplies licensed broker names; exact heading, rent and brokerage checks reject mismatches. The supplied listing URL and at most one derived URL are tried. No model or search call is added by this fallback. The live saved #9A record now shows Fatma Kara with a source link; missing email/phone still blocks automated email. Older unresolved listings need another enrichment attempt to populate missing names. Broker-directory and blocked-page coverage remain limited.
+
 Contact visibility fix (2026-09-12): persist brokerage contact routes in enrichment events and display them alongside recovered agents even when email outreach is blocked. Inbox rows show the brokerage and recovered channels; details show phone, email, evidence and retrieval time. Office routes and unit conflicts remain explicitly labeled and separate from outreach recipients. Centennial's catalog footer supplies an office fallback when exact-unit discovery fails. The saved #3 and #6-5 Mott Street events were repaired from existing cached sources without changing pursuit state or sending messages.
 
 Verified broker discovery (2026-09-12): the OpenRouter agent independently finds **Fatma Kara at FIND Real Estate for 620 East 6th Street #9A**, using the original listing fields without a seeded name or URL. It generates one candidate URL, validates the live page heading/rent, then extracts its broker section. The fresh run cost **0.34¢** in 7.9 seconds. Offline auditing rejects the conflicting-brokerage email returned by contact search; personal contacts remain unverified. That upstream snapshot passed 154 tests. The worker provider is unchanged, and general recall is not established. See the [live report](docs/enrichment/fatma-live-result-2026-09-12.md).
 
 Current measured status (2026-09-12): the optional GPT-4.1 Mini / OpenRouter path processed four new listings for 2.08¢ total, but returned no named brokers and only three generic company contact channels. It does not yet meet the listing-agent enrichment goal. The [live cost report](docs/enrichment/mini-cost-benchmark-2026-09-12.md) separates API execution from contact quality; lower spend alone is not a release criterion.
 
-Use generic fetch and extraction, with Playwright only when rendering is required. Do not scrape StreetEasy rental pages; resolve the canonical URL from the alert's redirect headers. Preserve verified brokerage identity and office address, especially for similarly named firms.
+Use generic fetch and extraction, with Playwright only when rendering is required. The worker now permits bounded public StreetEasy listing reads for broker-name recovery, superseding the proposal's earlier portal-page exclusion. Preserve verified brokerage identity and office address, especially for similarly named firms.
 
 Capture every explicitly attributed listing agent, including profile URL and source order. Do not infer primary status from order. The proposal prefers one outreach message to the verified contact set, with a general leasing inbox as fallback. Verification, contact freshness, unknown-primary addressing, and split-thread handling remain open in the review.
 
@@ -75,7 +77,7 @@ The corpus counts in the snapshot are reported pilot observations; they were not
 
 ## Scope and work division
 
-Proposed exclusions: StreetEasy page scraping, per-brokerage scraper adapters, vector search, SMS/phone outreach, automated portal completion, and lease signing. The spec also excludes roommate roles; baseline membership and document access controls still require a decision.
+The original proposal excluded StreetEasy page scraping and per-brokerage adapters; bounded listing reads and reviewed adapters are now implemented. Vector search, SMS/phone outreach, automated portal completion, and lease signing remain excluded. The spec also excludes roommate roles; baseline membership and document access controls still require a decision.
 
 The [hackathon split](docs/superpowers/specs/2026-09-12-scout-product-design.md#8-two-person-hackathon-split) assigns A the entire agentic pipeline: ingestion, matching, enrichment, Gmail conversation, Calendar integration, schema, and worker orchestration. B owns the dashboard: profile, listings, pursuit details, escalation resolution, tour display, authorized command submission, and demo presentation. Both first agree a minimal contract and fixture scenarios, then integrate on the first persisted pursuit.
 

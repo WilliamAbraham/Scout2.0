@@ -94,6 +94,7 @@ export function summarizeEnrichment(result: EnrichmentResult): Record<string, un
       phone: agent.phone,
       role: agent.role,
       profileUrl: agent.profileUrl,
+      sourceUrl: agent.attributionSourceUrl,
     })),
     candidateAgents: result.candidateAgents.map(agent => agent.name),
     issues: result.issues,

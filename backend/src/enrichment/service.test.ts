@@ -37,7 +37,7 @@ async function setup(t: TestContext, handler: Handler, options: Partial<Enrichme
     const result = await handler(String(url), payload);
     return result instanceof Response ? result : Response.json(result);
   };
-  const service = new BrokerEnrichment({cacheDir, fetch: fakeFetch, sleep: async () => {}, ...options});
+  const service = new BrokerEnrichment({cacheDir, fetch: fakeFetch, sleep: async () => {}, listingFallback: false, ...options});
   return {service, calls, cacheDir};
 }
 function workflow(options: {pages?: Record<string, ExtractedListing>; indexed?: boolean; failBen?: boolean} = {}): Handler {
