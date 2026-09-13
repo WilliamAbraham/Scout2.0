@@ -5,7 +5,8 @@ import process from 'node:process';
 import type {gmail_v1} from 'googleapis';
 
 import {client, db} from '../src/db/index.ts';
-import {BrokerEnrichment} from '../src/enrichment/service.ts';
+import {EnrichmentBudget} from '../src/enrichment/spend.ts';
+import {enrichForPipeline} from '../src/pipeline/agentEnrichment.ts';
 import {getGmailClient, getGmailSendClient} from '../src/gmail/auth.ts';
 import {assertLiveSendReady, createLiveSendMail} from '../src/outreach/delivery.ts';
 import {createOutreachPorts} from '../src/outreach/ports.ts';
@@ -33,7 +34,8 @@ import {DATA_DIR} from '../src/paths.ts';
  * this mailbox belongs to), optional TAVILY_API_KEY / FIRECRAWL_API_KEY,
  * SCOUT_CATCH_UP_DAYS (first-run window, default 2), SCOUT_MESSAGES_PER_CYCLE
  * (default 25), SCOUT_MAILBOX_QUERY (extra Gmail terms for a catch-up),
- * OPENROUTER_MODEL, WORKER_POLL_MS, WORKER_LEASE_MS.
+ * OPENROUTER_MODEL (outreach only), WORKER_POLL_MS, WORKER_LEASE_MS,
+ * SCOUT_ENRICHMENT_BUDGET_USD (shared per process; default 0).
  *
  * Dry-run is the default: drafts are composed and recorded as `draft_composed`
  * events, with zero Gmail send calls. `--live` requires gmail.send re-consent
@@ -77,16 +79,18 @@ if (live) {
 const outbox = new PostgresOutbox(db);
 let sendClient: Promise<gmail_v1.Gmail> | null = null;
 
-const enrichment = new BrokerEnrichment({
-  cacheDir: path.join(DATA_DIR, 'enrichment', 'cache'),
+const enrichmentOptions = {
+  apiKey: openRouterApiKey,
+  budget: new EnrichmentBudget(Number(process.env.SCOUT_ENRICHMENT_BUDGET_USD ?? 0)),
+  cacheDir: path.join(DATA_DIR, 'enrichment', 'agent-cache'),
   ...(process.env.TAVILY_API_KEY ? {tavilyKey: process.env.TAVILY_API_KEY} : {}),
   ...(process.env.FIRECRAWL_API_KEY ? {firecrawlKey: process.env.FIRECRAWL_API_KEY} : {}),
   log,
-});
+};
 
 const alertDeps: AlertPipelineDeps = {
   store,
-  enrich: input => enrichment.run(input),
+  enrich: input => enrichForPipeline(input, enrichmentOptions),
 };
 
 // Identifies this process in the lease and the run log.

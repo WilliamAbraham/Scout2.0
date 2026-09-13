@@ -12,6 +12,11 @@ function mapRole(role: string | null): ListingAgent['role'] {
 export function contactSnapshotFromEnrichment(result: EnrichmentResult): ContactSnapshot | null {
   const withEmail = result.agents.filter(agent => agent.email);
   if (withEmail.length === 0) {
+    const routes = result.outreachReady ? result.contactRoutes.filter(route => route.relationship === 'exact_listing' && route.email) : [];
+    if (routes.length) return {
+      tier: 'building_leasing', sourceUrl: result.listingUrl ?? routes[0]!.sourceUrls[0] ?? null,
+      contacts: routes.map(route => ({name: route.name, email: route.email, phone: route.phone, profileUrl: null, role: 'unspecified'})),
+    };
     return null;
   }
 

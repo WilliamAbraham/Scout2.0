@@ -1,5 +1,13 @@
 # Cost-controlled OpenRouter enrichment
 
+## Default pipeline and 12-listing evaluation
+
+The user selected `enrichWithAgent()` as the default. The continuous worker now invokes it through `enrichForPipeline`, and the one-email runner and CLI share `agentResultForPipeline` for accepted results. The CLI retains raw results in `results.json` and writes accepted results to `pipeline-results.json`; stdout uses the accepted shape. `npm run enrich` and `npm run enrich:agent` run this path; `npm run enrich:legacy` runs the old service.
+
+The [approved 12-listing test](active-12-agent-test-2026-09-12.md) cost $0.087395756 in OpenRouter usage and returned accepted named agents on only 2 listings. Brokerage labels and a conflicting-brokerage candidate were rejected during offline mapping of those exact responses. Ten source reads were blocked by HTTP 403, including the fresh Fatma test. General office contacts do not establish that a listing is company-only. These results supersede any assumption that this path reliably identifies every listing's agents.
+
+The worker uses `SCOUT_ENRICHMENT_BUDGET_USD` as one process-wide allowance (default 0) and pins enrichment to `AGENT_MODEL`; `OPENROUTER_MODEL` remains the worker/one-email runner's outreach-model setting. The budget is not renewed each polling cycle or persisted across restarts. CLI runs use `--budget-usd`. Tavily/Firecrawl credit consumption remains separate. Missing names, incomplete execution, unit conflicts and generic office contacts cannot become automatically accepted individual recipients.
+
 The `enrich:agent` command now defaults to GPT-4.1 Mini through the official OpenAI JavaScript SDK and OpenRouter. It requires an explicit dollar budget before making paid requests. A subsequently approved [four-listing live test](mini-cost-benchmark-2026-09-12.md) cost $0.020800404 total, but found no named brokers and only three generic brokerage contact channels. Lower cost is measured; adequate enrichment quality is not established. The earlier $4.21 benchmark used a different email and configuration.
 
 ## Verified current result
@@ -8,7 +16,7 @@ The address-only test now independently identifies **Fatma Kara at FIND Real Est
 
 ## Retrieval upgrade (2026-09-12)
 
-The agent now accepts an optional `listingUrl`. The Gmail-to-enrichment adapter preserves it instead of dropping it. The input parser accepts canonical HTTPS StreetEasy rental or exact-unit building URLs and removes query parameters and fragments. The live alert/outreach runner still uses `BrokerEnrichment`, not this optional OpenRouter agent; this change does not switch providers or enable outreach.
+The agent accepts an optional `listingUrl`. The Gmail-to-enrichment adapter preserves it instead of dropping it. The input parser accepts canonical HTTPS StreetEasy rental or exact-unit building URLs and removes query parameters and fragments. The initial retrieval upgrade did not switch the worker; the default-provider switch described above now does.
 
 Before paid discovery, a supplied URL is read over HTTP. When no URL is supplied, the agent tries one conventional StreetEasy URL generated from the New York address and unit. It validates the returned heading and any available asking rent before using the page as evidence; generated URLs alone do not establish attribution. The reader checks every redirect against the StreetEasy listing allowlist, bounds the entire read to ten seconds and 2 MB, removes executable markup, and retains the page heading plus up to 5,200 characters around “Listed by.” This targets broker names even after a long description. The read uses no model/search credits. HTTP errors, challenge pages and missing content are recorded before search fallback; there is no CAPTCHA bypass or browser rendering. JavaScript-only or inaccessible pages remain a limitation.
 

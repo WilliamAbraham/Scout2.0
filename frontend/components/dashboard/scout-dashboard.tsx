@@ -630,8 +630,8 @@ export function ScoutDashboard({
                                 <td className={styles.updateCell}>
                                   <p>{nextStep(item)}</p>
                                   {item.pursuit?.recoveredContacts?.map((contact, index) => (
-                                    (contact.email || contact.phone) && <small key={`contact-${index}`}>
-                                      {contact.label}: {[contact.email, contact.phone].filter(Boolean).join(" · ")}
+                                    <small key={`contact-${index}`}>
+                                      {contact.name ? `${contact.name} · ` : ""}{contact.label}: {[contact.email, contact.phone].filter(Boolean).join(" · ") || "Email and phone not yet found"}
                                     </small>
                                   ))}
                                   <time

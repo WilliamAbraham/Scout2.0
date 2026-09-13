@@ -2,7 +2,7 @@ import {createHash, randomUUID} from 'node:crypto';
 import {mkdir, readFile, rename, stat, writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {load} from 'cheerio';
-import {canonicalListingUrl} from './listingPage.ts';
+import {canonicalListingUrl, candidateListingUrl, readListingPage} from './listingPage.ts';
 import {resolveDirect} from './sources.ts';
 import type {ContactRoute} from './sources.ts';
 
@@ -49,6 +49,7 @@ export interface Contact extends Agent {
 }
 
 export interface EnrichmentResult {
+  research?: {engine: 'enrichWithAgent'; model: string; listingStatus: string; reportedUsd: number | null; cacheHit: boolean};
   status: 'source_matched' | 'partial' | 'needs_review' | 'not_found' | 'error';
   execution: 'completed' | 'partial' | 'error' | 'budget_exhausted';
   input: EmailListing;
@@ -80,6 +81,8 @@ export interface EnrichmentOptions {
   indexedFallback?: boolean;
   directSources?: boolean;
   directOnly?: boolean;
+  /** Read the exact portal listing for names when brokerage discovery has none. */
+  listingFallback?: boolean;
   log?: (message: string) => void;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
@@ -489,11 +492,48 @@ export class BrokerEnrichment {
         if (result.status === 'not_found' && direct.contactRoutes.length) result.status = 'needs_review';
         if (direct.execution !== 'completed' && result.execution === 'completed' && result.status !== 'source_matched') result.execution = 'partial';
       }
-      return result;
+      return await this.listingFallback(input, result);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      return this.result(input, {...direct, status: direct?.contactRoutes.length ? 'needs_review' : 'error', execution: 'error', issues: [...(direct?.issues ?? []), message]});
+      return await this.listingFallback(input, this.result(input, {...direct,
+        status: direct?.contactRoutes.length ? 'needs_review' : 'error', execution: 'error', issues: [...(direct?.issues ?? []), message]}));
     } finally {this.running = false;}
+  }
+
+  private async listingFallback(input: EmailListing, result: EnrichmentResult): Promise<EnrichmentResult> {
+    if (result.agents.length || this.options.directOnly || this.options.listingFallback === false
+      || normalizeAddress(input.brokerage) === 'owner') return result;
+    const urls = [...new Set([input.listingUrl, candidateListingUrl(input)].filter((url): url is string => !!url))];
+    for (const url of urls) {
+      const attempt = {provider: 'listing_page', url, fetchedAt: new Date().toISOString()};
+      result.attempts.push(attempt);
+      try {
+        const page = await readListingPage(url, this.options.fetch ?? fetch);
+        const heading = /^(.*?)\s+#(.+)$/.exec(page.heading ?? '');
+        if (!heading || normalizeAddress(heading[1]!) !== normalizeAddress(input.address)
+          || normalizeUnit(heading[2]!) !== normalizeUnit(input.unit)) throw new Error('Listing heading does not match exact address and unit');
+        if (page.price === undefined || page.price !== input.price) throw new Error('Listing rent missing or conflicts with input');
+        const brokers = page.brokers ?? [];
+        if (!brokers.length || brokers.some(broker => normalizeAddress(broker.brokerage) !== normalizeAddress(input.brokerage))) {
+          throw new Error('No complete Listed by roster at the supplied brokerage');
+        }
+        result.agents = brokers.map(broker => ({name: broker.name, profileUrl: broker.profileUrl,
+          email: null, phone: null, role: null, attributionEvidence: `${page.heading}; Listed by ${broker.evidence}`,
+          contactEvidence: '', sourceUrl: page.url, attributionSourceUrl: page.url, emailSourceUrl: null, phoneSourceUrl: null}));
+        result.listingUrl = page.url;
+        result.checkedAt = attempt.fetchedAt;
+        result.status = 'partial';
+        if (result.execution === 'error') result.execution = 'partial';
+        result.resolution = 'agents_verified';
+        result.rosterCompleteness = 'source_only';
+        result.outreachReady = false;
+        result.warnings.push('Listing broker names recovered; personal email and phone still unresolved.');
+        return result;
+      } catch (error) {
+        result.warnings.push(`Listing broker fallback: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    return result;
   }
 
   private async resolve(input: EmailListing, knownBusinessUrl?: string): Promise<EnrichmentResult> {

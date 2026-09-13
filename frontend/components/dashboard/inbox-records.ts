@@ -141,7 +141,10 @@ type OrderedEvent = StoredPursuit["pursuit_events"][number] & {
 
 // Keep research results visible without making them outreach recipients.
 function recoveredContacts(events: OrderedEvent[]) {
-  const latest = events.findLast((event) => event.type === "enriched");
+  const latest = events.findLast((event) => event.type === "enriched" || (
+    event.type === "error" && event.payload.deferred === true &&
+    [event.payload.agents, event.payload.contactRoutes].some((contacts) => Array.isArray(contacts) && contacts.length > 0)
+  ));
   if (!latest) return [];
   const summary = latest.payload;
   const agents = Array.isArray(summary.agents) ? summary.agents : [];
@@ -165,7 +168,7 @@ function recoveredContacts(events: OrderedEvent[]) {
           : contact.relationship === "exact_listing"
             ? "Listing leasing team"
             : "Brokerage office · listing association unconfirmed",
-      sourceUrl: sources.map(safeSourceUrl).find(Boolean)
+      sourceUrl: safeSourceUrl(contact.sourceUrl) ?? sources.map(safeSourceUrl).find(Boolean)
         ?? safeSourceUrl(summary.listingUrl) ?? safeSourceUrl(summary.brokerageUrl),
       checkedAt: offsetTimestamp(contact.fetchedAt) ?? offsetTimestamp(summary.checkedAt),
     }];
