@@ -6,11 +6,11 @@ import type {ListingAgent} from './types.ts';
  * demo must not cold-email them, so the redirect is the default rather than an
  * opt-in: `allowRealRecipients` on the sender is the only way past it.
  *
- * It defaults to the mailbox the agent sends from, so a redirected send lands
- * in both Sent and Inbox and the whole round trip is visible in one account.
+ * It is a mailbox separate from the one the agent sends from, so a redirected
+ * send is visibly received rather than looking like a note to self.
  */
 export const CONTROLLED_TEST_RECIPIENT =
-  process.env.SCOUT_TEST_RECIPIENT?.trim() || 'williamsaibroker@gmail.com';
+  process.env.SCOUT_TEST_RECIPIENT?.trim() || 'williamja100@gmail.com';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
