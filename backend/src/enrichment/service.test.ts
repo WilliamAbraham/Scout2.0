@@ -176,7 +176,7 @@ test('preserves a recovered candidate when the next lookup hits a quota', async 
   assert.equal(result.execution, 'partial');
   assert.equal(result.status, 'needs_review');
   assert.deepEqual(result.candidateAgents.map(agent => agent.name), ['Ava']);
-  assert.match(result.issues.join(' '), /retry later/);
+  assert.match(result.issues.join(' '), /HTTP 429/);
 });
 
 test('call budget bounds requests, preserves candidates and resets on the next run', async t => {

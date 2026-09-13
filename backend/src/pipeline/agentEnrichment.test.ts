@@ -58,7 +58,11 @@ test('exact listing teams can supply a snapshot; office and unit-conflict routes
     assert.deepEqual(mapped.agents, []);
     assert.deepEqual(mapped.contactRoutes, [route]);
     assert.equal(mapped.outreachReady, relationship === 'exact_listing');
-    assert.equal(contactSnapshotFromEnrichment(mapped)?.tier ?? null, relationship === 'exact_listing' ? 'building_leasing' : null);
+    // A general office line is a real way to reach the firm holding the
+    // listing, so it supplies a snapshot at brokerage tier; only a route for a
+    // different unit is refused outright.
+    assert.equal(contactSnapshotFromEnrichment(mapped)?.tier ?? null,
+      relationship === 'exact_listing' ? 'building_leasing' : relationship === 'brokerage' ? 'building_leasing' : null);
   }
 });
 

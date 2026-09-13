@@ -12,12 +12,27 @@ function mapRole(role: string | null): ListingAgent['role'] {
 export function contactSnapshotFromEnrichment(result: EnrichmentResult): ContactSnapshot | null {
   const withEmail = result.agents.filter(agent => agent.email);
   if (withEmail.length === 0) {
-    const routes = result.outreachReady ? result.contactRoutes.filter(route => route.relationship === 'exact_listing' && route.email) : [];
-    if (routes.length) return {
-      tier: 'building_leasing', sourceUrl: result.listingUrl ?? routes[0]!.sourceUrls[0] ?? null,
-      contacts: routes.map(route => ({name: route.name, email: route.email, phone: route.phone, profileUrl: null, role: 'unspecified'})),
+    // No individual mailbox, but enrichment may still have verified a leasing
+    // or office route. That is a real way to reach whoever holds the listing,
+    // and `tier` records that it is the brokerage, not the agent.
+    const routes = result.contactRoutes.filter(route => route.email && route.relationship !== 'unit_conflict');
+    if (routes.length === 0) {
+      return null;
+    }
+    // A route tied to this exact unit outranks a general office line.
+    const exact = routes.filter(route => route.relationship === 'exact_listing');
+    const chosen = exact.length > 0 ? exact : routes;
+    return {
+      tier: chosen[0]!.kind === 'leasing_team' ? 'building_leasing' : 'brokerage',
+      sourceUrl: result.listingUrl ?? chosen[0]!.sourceUrls[0] ?? result.brokerageUrl,
+      contacts: chosen.map(route => ({
+        name: route.name,
+        email: route.email,
+        phone: route.phone,
+        profileUrl: route.sourceUrls[0] ?? null,
+        role: 'unspecified' as const,
+      })),
     };
-    return null;
   }
 
   let tier: ContactSnapshot['tier'];

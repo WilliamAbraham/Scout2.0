@@ -75,7 +75,12 @@ export function listingPageText(html: string): string {
   return `${title}\n${headings}\n${excerpt}`.trim();
 }
 
-export async function readListingPage(value: string, fetcher: typeof fetch = fetch): Promise<ListingPage> {
+/**
+ * Reads and parses a listing page. The fetcher is required: StreetEasy answers
+ * plain requests with 403 often enough that a default would be a trap, so a
+ * caller must pass a renderer such as `firecrawlFetcher`.
+ */
+export async function readListingPage(value: string, fetcher: typeof fetch): Promise<ListingPage> {
   let url = canonicalListingUrl(value)!;
   const signal = AbortSignal.timeout(10_000);
   for (let hop = 0; hop <= 3; hop++) {
