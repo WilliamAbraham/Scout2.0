@@ -6,13 +6,14 @@
  *    person holding a listing; a brokerage's own site carries the exact unit
  *    only occasionally, and the wider web reports the firm rather than the
  *    agent ("Listing by Voro New York").
- * 2. Tavily searches for that person at that brokerage, and their email and
- *    phone are read out of the results.
+ * 2. `findAgentEmail` searches for that person at that brokerage and reads
+ *    their email and phone off the closest page that is demonstrably theirs.
  *
  * StreetEasy is never fetched directly: it answers plain requests with 403
  * often enough that the free path is not worth the ambiguity it introduces.
  * Every read here goes through Firecrawl.
  */
+import {findAgentEmail} from './agentContacts.ts';
 import {normalizeAddress, normalizeUnit} from './service.ts';
 import type {EmailListing} from './service.ts';
 
@@ -48,11 +49,19 @@ export interface LookupOptions {
   fetch?: typeof fetch;
 }
 
-const EMAIL = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
-const PHONE = /(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]\d{3}[ .-]\d{4}/g;
 const compact = (value: string) => value.replace(/\s+/g, ' ').trim();
 const isObject = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * Whether a listing's availability line means the apartment is gone. The
+ * extraction is asked for delisting notices only, but it reports "Available
+ * now" and "Available 10/5/2026" just as readily, and treating any answer as a
+ * delisting withholds outreach on exactly the listings worth pursuing.
+ */
+export function delisted(value: string): boolean {
+  return /\b(?:de-?listed|no longer (?:available|listed|on the market)|off[- ]market|rented|leased|in contract|unavailable|not available)\b/i.test(value);
+}
 
 /**
  * One apartment's own page. `/rental/<id>` is what an alert carries and it
@@ -127,61 +136,53 @@ async function firecrawl(url: string, prompt: string, schema: unknown, options: 
   };
 }
 
-/** Web search with page text, so a contact can be read without another fetch. */
-async function tavily(query: string, options: LookupOptions) {
-  options.log?.(`tavily search ${query}`);
-  const body = await post('https://api.tavily.com/search', options.tavilyKey, {
-    query,
-    max_results: 5,
-    search_depth: 'advanced',
-    include_raw_content: true,
-  }, options);
-  const rows = Array.isArray(body.results) ? body.results : [];
-  return rows.flatMap(row => isObject(row) && typeof row.url === 'string'
-    ? [{
-      url: row.url,
-      title: typeof row.title === 'string' ? row.title : '',
-      text: [row.content, row.raw_content].filter(value => typeof value === 'string').join('\n'),
-    }]
-    : []);
+const ORDINALS: Record<string, string> = {first: '1', second: '2', third: '3', fourth: '4', fifth: '5', sixth: '6',
+  seventh: '7', eighth: '8', ninth: '9', tenth: '10', eleventh: '11', twelfth: '12'};
+
+/**
+ * The street part of an address, in one spelling. StreetEasy renders what the
+ * alert calls "151 Eighth Avenue" as "151 8th Avenue", and appends the city and
+ * zip about half the time ("25 Catherine Street, New York, NY 10038"), so the
+ * two strings rarely match character for character even when they are the same
+ * apartment. Ordinals become digits and anything from the city onward is cut.
+ */
+function streetAddress(value: string): string {
+  const full = normalizeAddress(value)
+    .replace(/\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth)\b/g, word => ORDINALS[word]!)
+    .replace(/\b(\d+)(?:st|nd|rd|th)\b/g, '$1');
+  const street = full.split(/\b(?:new york|nyc|ny|brooklyn|queens|bronx|manhattan|staten island)\b/)[0]!.trim();
+  // A street genuinely named after the city ("1 New York Avenue") cuts down to
+  // nothing useful; keep the whole string there and let containment handle it.
+  return street.split(' ').length >= 2 ? street : full;
 }
 
-/** Reject the firm's own `info@` when it is offered as a person's address. */
-function personalEmail(email: string, name: string): boolean {
-  const local = email.split('@')[0]!.toLowerCase().replace(/[^a-z]/g, '');
-  const [first = '', last = ''] = normalizeAddress(name).split(' ');
-  return (first.length >= 3 && local.includes(first))
-    || (last.length >= 3 && local.includes(last))
-    || (first.length >= 1 && last.length >= 3 && local === `${first[0]!}${last}`);
+/** Whether two rendered addresses name the same building. */
+function sameStreetAddress(a: string, b: string): boolean {
+  const [x, y] = [streetAddress(a), streetAddress(b)];
+  return !!x && !!y && (x === y || x.startsWith(`${y} `) || y.startsWith(`${x} `));
 }
 
 /**
  * The agent's contact details, from a search for them at their brokerage.
- * A result only counts when its text actually names them, so one agent's page
- * cannot supply another's address.
+ *
+ * `findAgentEmail` is the one place that decides whether an address belongs to
+ * a person: it requires the page to be about real estate, weighs the
+ * brokerage's own domain above anything else, and rejects a namesake at another
+ * firm. Reproducing a lighter version of that here is what once returned an
+ * Illinois agent's address for a Manhattan listing.
  */
-async function contactFor(agent: AgentContact, options: LookupOptions): Promise<void> {
-  const brokerage = agent.brokerage ?? '';
-  const results = await tavily(`"${agent.name}" ${brokerage} real estate agent email phone contact`, options);
-  const named = results.filter(result => normalizeAddress(`${result.title} ${result.text}`).includes(normalizeAddress(agent.name)));
-
-  for (const result of named) {
-    const emails = [...new Set(result.text.match(EMAIL) ?? [])].map(value => value.toLowerCase())
-      .filter(value => !/\.(png|jpe?g|gif|webp|svg)$/.test(value));
-    const email = emails.find(value => personalEmail(value, agent.name));
-    const phone = (result.text.match(PHONE) ?? [])[0] ?? null;
-    if (!email && !phone) continue;
-
-    agent.sources.push(result.url);
-    agent.email ??= email ?? null;
-    agent.phone ??= phone;
-    // A short excerpt around the name, so a reader can see who this is.
-    if (!agent.context) {
-      const at = normalizeAddress(result.text).indexOf(normalizeAddress(agent.name));
-      agent.context = compact(result.text.slice(Math.max(0, at - 100), at + 400)) || null;
-    }
-    if (agent.email) return;
-  }
+async function contactFor(agent: AgentContact, options: LookupOptions, fallbackBrokerage: string): Promise<void> {
+  const lookup = await findAgentEmail({name: agent.name, brokerage: agent.brokerage || fallbackBrokerage}, {
+    apiKey: options.tavilyKey ?? '',
+    ...(options.firecrawlKey ? {firecrawlKey: options.firecrawlKey} : {}),
+    ...(options.fetch ? {fetch: options.fetch} : {}),
+    ...(options.log ? {log: options.log} : {}),
+    ...(options.timeoutMs === undefined ? {} : {timeoutMs: options.timeoutMs}),
+  });
+  if (lookup.searchedUrl) agent.sources.push(lookup.searchedUrl);
+  agent.email ??= lookup.email?.value ?? null;
+  agent.phone ??= lookup.phone?.value ?? null;
+  agent.context ??= lookup.email?.evidence.excerpt ?? null;
 }
 
 /**
@@ -209,7 +210,7 @@ export async function findListingAgents(input: EmailListing, options: LookupOpti
   const extracted = isObject(page.json) ? page.json : {};
 
   // The page has to be this apartment before its roster means anything.
-  if (typeof extracted.address === 'string' && normalizeAddress(extracted.address) !== normalizeAddress(input.address)) {
+  if (typeof extracted.address === 'string' && !sameStreetAddress(extracted.address, input.address)) {
     return {listingUrl, availability: null, agents: [], notes: [`Listing page is ${extracted.address}, not ${input.address}`]};
   }
   if (typeof extracted.unit === 'string' && normalizeUnit(extracted.unit) !== normalizeUnit(input.unit)) {
@@ -217,6 +218,10 @@ export async function findListingAgents(input: EmailListing, options: LookupOpti
   }
   if (typeof extracted.price === 'number' && extracted.price !== input.price) {
     notes.push(`Listing shows ${extracted.price}; the alert said ${input.price}`);
+  }
+
+  if (typeof extracted.availability === 'string' && !delisted(extracted.availability)) {
+    notes.push(`StreetEasy shows "${compact(extracted.availability)}"`);
   }
 
   const rows = Array.isArray(extracted.agents) ? extracted.agents : [];
@@ -238,7 +243,7 @@ export async function findListingAgents(input: EmailListing, options: LookupOpti
   const reachable = agents.slice(0, options.maxAgents ?? 3);
   for (const agent of reachable) {
     try {
-      await contactFor(agent, options);
+      await contactFor(agent, options, input.brokerage);
     } catch (error) {
       notes.push(`No contact found for ${agent.name}: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -248,7 +253,9 @@ export async function findListingAgents(input: EmailListing, options: LookupOpti
 
   return {
     listingUrl,
-    availability: typeof extracted.availability === 'string' ? compact(extracted.availability) : null,
+    // Only a delisting blocks outreach downstream; an availability date is
+    // information, so it is recorded without gating anything.
+    availability: typeof extracted.availability === 'string' && delisted(extracted.availability) ? compact(extracted.availability) : null,
     agents,
     notes,
   };

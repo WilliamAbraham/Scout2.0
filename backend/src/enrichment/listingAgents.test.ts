@@ -55,7 +55,7 @@ test('the listing names its agent and Tavily supplies a personal address', async
   assert.equal(found.agents[0]?.phone, '212-555-0134');
   assert.equal(found.listingUrl, 'https://streeteasy.com/rental/123');
   assert.equal(calls[0], 'https://streeteasy.com/rental/123');
-  assert.match(calls[1]!, /^search:"Fatma Kara" FIND Real Estate/);
+  assert.match(calls[1]!, /^search:"Fatma Kara" "FIND Real Estate"/);
 });
 
 test('a firm mailbox is never returned as the agent\'s own address', async () => {
@@ -86,6 +86,44 @@ test('a different apartment or a company account cannot become the listing agent
     const {fetcher} = providers({listing});
     const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
     assert.deepEqual(found.agents, []);
+  }
+});
+
+test('a namesake at another firm does not supply the listing agent\'s address', async () => {
+  // The same search that named Daniel Ramirez of OGI Management returned a
+  // Daniel Ramirez in Illinois; his address must not become this listing's.
+  const {fetcher} = providers({search: [{
+    url: 'https://www.killebrewre.com/agents/dramirez', title: 'Daniel Ramirez',
+    content: 'Daniel Ramirez, real estate salesperson. Email daniel.ramirez@theagencyre.com or call (217) 546-1234.',
+  }]});
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+
+  assert.equal(found.agents[0]?.email, null);
+  assert.match(found.notes.join(' '), /No email found for Fatma Kara/);
+});
+
+test('a digit glued on by text extraction is stripped from the address', async () => {
+  // Firecrawl renders an image caption straight into the address: "Image
+  // 6tom@voronyc.com". The repaired value is what gets stored.
+  const {fetcher} = providers({search: [{
+    url: 'https://findrealestate.com/team/fatma-kara', title: 'Fatma Kara',
+    content: 'Fatma Kara Licensed Real Estate Salesperson Image 6fatma@findrealestate.com 212-555-0134',
+  }]});
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+
+  assert.equal(found.agents[0]?.email, 'fatma@findrealestate.com');
+});
+
+test('an availability date is recorded without withholding outreach', async () => {
+  for (const [availability, blocks] of [['Available now', false], ['Available 10/5/2026', false],
+    ['No longer available', true], ['Delisted 8/28/2026', true]] as const) {
+    const {fetcher} = providers({listing: {...roster, availability}, search: [{
+      url: 'https://findrealestate.com/team/fatma-kara', title: 'Fatma Kara',
+      content: 'Fatma Kara, Licensed Real Estate Salesperson. Reach her at fatma@findrealestate.com or 212-555-0134.',
+    }]});
+    const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+    assert.equal(found.availability, blocks ? availability : null, availability);
+    if (!blocks) assert.match(found.notes.join(' '), new RegExp(availability), availability);
   }
 });
 
