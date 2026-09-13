@@ -1,5 +1,7 @@
 # Broker enrichment
 
+This page describes the **legacy** `BrokerEnrichment` service. The worker, one-email runner and default `npm run enrich` now use [`enrichWithAgent()`](enrichment/openrouter-agent.md). See the [12-listing evaluation](enrichment/active-12-agent-test-2026-09-12.md) for measured coverage and limitations.
+
 The standalone TypeScript service takes email listing fields and returns supported agents, separately labeled contact routes, evidence, and a review status. Direct adapters run first for Canvas, Centennial and Next Step. Tavily is the preferred search provider for the generic fallback when configured. Firecrawl renders pages and performs structured extraction, and supplies fallback search when no Tavily key is present. No LangChain or OpenAI dependency is required.
 
 The [updated research](broker-enrichment-research-v2.md) and [Word report](broker-enrichment-research-v2.docx) explain the five-listing benchmark and technology comparisons. The [earlier observed summary](enrichment/118-mulberry-r4.observed.json) records the DALLAL run. These remain bounded implementations, not proof of complete market coverage.
@@ -9,8 +11,8 @@ The [updated research](broker-enrichment-research-v2.md) and [Word report](broke
 Use Node 24+ and install dependencies from the repository root with `npm ci`. From that directory:
 
 ```sh
-npm run enrich -- backend/fixtures/enrichment/118-mulberry-r4.json
-npm run enrich -- backend/fixtures/enrichment/118-mulberry-r4.json --refresh --max-calls 32
+npm run enrich:legacy -- backend/fixtures/enrichment/118-mulberry-r4.json
+npm run enrich:legacy -- backend/fixtures/enrichment/118-mulberry-r4.json --refresh --max-calls 32
 npm run test:enrichment -w backend
 npm run typecheck:enrichment -w backend
 ```

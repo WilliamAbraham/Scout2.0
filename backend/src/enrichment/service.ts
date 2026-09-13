@@ -49,6 +49,7 @@ export interface Contact extends Agent {
 }
 
 export interface EnrichmentResult {
+  research?: {engine: 'enrichWithAgent'; model: string; listingStatus: string; reportedUsd: number | null; cacheHit: boolean};
   status: 'source_matched' | 'partial' | 'needs_review' | 'not_found' | 'error';
   execution: 'completed' | 'partial' | 'error' | 'budget_exhausted';
   input: EmailListing;

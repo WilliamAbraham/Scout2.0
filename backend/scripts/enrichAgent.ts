@@ -4,6 +4,7 @@ import {enrichWithAgent, AGENT_MODEL} from '../src/enrichment/agent.ts';
 import {EnrichmentBudget} from '../src/enrichment/spend.ts';
 import {parseEmailListing} from '../src/enrichment/service.ts';
 import {REPO_ROOT, DATA_DIR} from '../src/paths.ts';
+import {agentResultForPipeline} from '../src/pipeline/agentEnrichment.ts';
 
 try {process.loadEnvFile(path.join(REPO_ROOT, '.env'));} catch (error) {
   if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
@@ -58,8 +59,9 @@ for (const [index, input] of inputs.entries()) {
   results.push(result);
   await writeFile(path.join(output, `${index + 1}.result.json`), JSON.stringify(result, null, 2));
   await writeFile(path.join(output, 'results.json'), JSON.stringify(results, null, 2));
+  await writeFile(path.join(output, 'pipeline-results.json'), JSON.stringify(results.map(agentResultForPipeline), null, 2));
   await writeFile(path.join(output, 'budget.json'), JSON.stringify(budget, null, 2));
-  console.log(JSON.stringify(result, null, 2));
+  console.log(JSON.stringify(agentResultForPipeline(result), null, 2));
   if (result.execution !== 'completed') process.exitCode = 1;
   if (result.notes.some(n => /OpenRouter HTTP (401|402|403|429)/.test(n))) break;
 }
