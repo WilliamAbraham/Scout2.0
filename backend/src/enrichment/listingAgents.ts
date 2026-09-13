@@ -167,7 +167,10 @@ async function contactFor(agent: AgentContact, options: LookupOptions): Promise<
   const firm = brokerageIdentity(agent.brokerage ?? '');
   if (!firm) return {skipped: `no brokerage to confirm ${agent.name} against`};
 
-  const results = await tavily(`"${agent.name}" ${agent.brokerage} real estate agent email phone contact`, options);
+  // Just the person and the firm. Appending "real estate agent email phone
+  // contact" ranks any agent's contact page above the right person's, and on a
+  // common name that is somebody else entirely.
+  const results = await tavily(`"${agent.name}" ${agent.brokerage}`, options);
   const named = results.filter(result => {
     const text = normalizeAddress(`${result.title} ${result.text}`);
     return text.includes(normalizeAddress(agent.name)) && text.includes(firm);

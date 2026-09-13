@@ -854,10 +854,10 @@ export class BrokerEnrichment {
       if (!listed) {
         try {
           candidates.push(...(host
-            ? await this.search(`"${agent.name}" agent contact email`, host)
+            ? await this.search(`"${agent.name}"`, host)
             // Without a verified site the person's page is still theirs to
             // find; portals and directories are already excluded from results.
-            : await this.search(`"${agent.name}" "${brokerage}" real estate agent contact email`)).slice(0, 2));
+            : await this.search(`"${agent.name}" "${brokerage}"`)).slice(0, 2));
         } catch (error) {reasons.push(`search: ${error instanceof Error ? error.message : String(error)}`);}
       }
       if (!candidates.length) {issues.push(`No public page found for ${agent.name}`); continue;}
