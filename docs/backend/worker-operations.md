@@ -12,6 +12,8 @@ From the repository root:
 ```bash
 npm run worker                  # poll continuously
 npm run worker -- --once        # a single cycle, then exit
+npm run worker -- --once --backfill-inbox
+                                # import StreetEasy alerts currently in the inbox
 npm run worker:status           # backlog, last run, and blocked work
 ```
 
@@ -24,9 +26,10 @@ flight, releasing the mailbox lease, and exiting.
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | required | Postgres, from the root `.env` |
-| `OPENROUTER_API_KEY` | required | Drafting model |
+| `OPENROUTER_API_KEY` | required | Drafting model; also paid enrichment when a budget is set |
 | `SCOUT_OWNER_USER_ID` | none | The one user this mailbox belongs to |
-| `TAVILY_API_KEY`, `FIRECRAWL_API_KEY` | none | Enrichment sources |
+| `TAVILY_API_KEY`, `FIRECRAWL_API_KEY` | none | StreetEasy/Tavily fallback inside `enrichWithAgent` |
+| `SCOUT_ENRICHMENT_BUDGET_USD` | 0 | Per-process OpenRouter discovery cap; `$0` skips paid research |
 | `SCOUT_CATCH_UP_DAYS` | 2 | Window a first run scans |
 | `SCOUT_MESSAGES_PER_CYCLE` | 25 | Upper bound on mail fetched per cycle |
 | `SCOUT_MAILBOX_QUERY` | none | Extra Gmail terms for a catch-up search |
@@ -51,6 +54,12 @@ batch is durably accounted for.
   longer than Google's history retention falls back to a date-bounded search
   sized to the outage and capped at 14 days. A gap wider than the cap is
   reported as truncated rather than silently skipped.
+- **Inbox backfill.** `--backfill-inbox` searches `in:inbox
+  from:noreply@email.streeteasy.com` instead of history. Use it to import
+  alerts that arrived before the cursor existed. It does not add a second
+  cursor: `processed_messages` still skips ids already `done` or `exhausted`,
+  listings upsert on `rental_id`, and a successful cycle still writes
+  `history_id` so later polls are incremental.
 - **Lease.** A cycle holds `worker_leases` for the mailbox and renews it
   between messages. A second worker declines the cycle instead of racing.
   A cycle still running when the timer fires is left alone.

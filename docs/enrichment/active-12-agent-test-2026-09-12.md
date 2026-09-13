@@ -31,7 +31,7 @@ The continuous worker, one-email runner and default `npm run enrich` command now
 
 These mapping checks were replayed offline against the exact saved live outputs; no second paid batch was needed. Raw responses are retained separately from the accepted pipeline results. Only 252 Mott #R3 was outreach-ready after these checks; this was a test result, not a send or state change.
 
-The worker's `SCOUT_ENRICHMENT_BUDGET_USD` is an explicit shared **per-process** OpenRouter allowance, defaulting to zero. It does not reset per listing or polling cycle, is not a durable daily spending cap, and does not include Tavily/Firecrawl credits. A deployment must configure its own allowance. The legacy implementation remains available through `npm run enrich:legacy`.
+The worker's `SCOUT_ENRICHMENT_BUDGET_USD` is an explicit shared **per-process** OpenRouter allowance, defaulting to zero. At `$0`, `enrichWithAgent` skips paid discovery and uses StreetEasy + Tavily. The budget does not reset per listing or polling cycle, is not a durable daily spending cap, and does not include Tavily/Firecrawl credits. A deployment must configure its own allowance.
 
 ## Evidence and reproduction
 

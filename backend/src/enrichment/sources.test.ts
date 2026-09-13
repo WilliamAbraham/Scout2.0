@@ -3,8 +3,18 @@ import test from 'node:test';
 import {mkdtemp, readFile, rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {BrokerEnrichment, parseEmailListing} from './service.ts';
+import {parseEmailListing} from './service.ts';
+import {EnrichmentBudget} from './spend.ts';
 import {businessPhone, parseCanvasListing, parseVcard, permittedDirectUrl, resolveDirect} from './sources.ts';
+import {enrichForPipeline} from '../pipeline/agentEnrichment.ts';
+import type {EmailListing} from './service.ts';
+
+function unpaid(input: EmailListing, options: {cacheDir: string; fetch?: typeof fetch}) {
+  return enrichForPipeline(input, {
+    apiKey: 'unused', budget: new EnrichmentBudget(0), cacheDir: options.cacheDir,
+    ...(options.fetch ? {fetch: options.fetch} : {}),
+  });
+}
 
 const input = parseEmailListing({address: '503 West 22nd Street #5W', price: 8800, bedrooms: 3, bathrooms: 2,
   brokerage: 'Canvas Property Group', city: 'New York'});
@@ -47,7 +57,7 @@ test('direct readers allow only reviewed company and feed origins', () => {
   assert.equal(permittedDirectUrl('https://mc.wlep1.com/api/ajax/canvas/property'), true);
 });
 test('owner listing is classified without any search or invented broker', async () => {
-  const result = await new BrokerEnrichment({cacheDir: '/unused', fetch: async () => {throw new Error('Unexpected request');}}).run({...input, brokerage: 'Owner'});
+  const result = await unpaid({...input, brokerage: 'Owner'}, {cacheDir: '/unused', fetch: async () => {throw new Error('Unexpected request');}});
   assert.equal(result.resolution, 'owner_listed'); assert.equal(result.outreachReady, false);
   assert.deepEqual(result.agents, []); assert.deepEqual(result.attempts, []);
 });
@@ -66,7 +76,7 @@ test('Centennial unit reversal remains a review contact, with primary vCard evid
     '<a href="/contact.vcf">Download Contact</a>',
     'FN:Centennial Properties\nEMAIL:apts@centpropny.com\nTEL;WORK;VOICE:212-228-9300',
   ]; let calls = 0;
-  const result = await new BrokerEnrichment({cacheDir, directOnly: true, fetch: async () => new Response(pages[calls++]!)}).run(listing);
+  const result = await unpaid(listing, {cacheDir, fetch: async () => new Response(pages[calls++]!)});
   assert.equal(result.contactRoutes[0]?.email, 'apts@centpropny.com');
   assert.equal(result.contactRoutes[0]?.relationship, 'unit_conflict');
   assert.equal(result.outreachReady, false); assert.equal(result.agents.length, 0);
@@ -76,9 +86,9 @@ test('Centennial unit reversal remains a review contact, with primary vCard evid
 test('Centennial retains its published office phone when #3 is absent from the catalog', async t => {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'scout-direct-')); t.after(() => rm(cacheDir, {recursive: true, force: true}));
   const listing = {...input, address: '248 Mott Street', unit: '3', price: 7995, bathrooms: 1, brokerage: 'Centennial Properties NY'};
-  const result = await new BrokerEnrichment({cacheDir, directOnly: true, fetch: async () => new Response(
+  const result = await unpaid(listing, {cacheDir, fetch: async () => new Response(
     '<footer>Centennial Properties NY • 424 West 51st Street • (212) 228-9300 • [email protected]</footer>',
-  )}).run(listing);
+  )});
   assert.equal(result.resolution, 'brokerage_only');
   assert.equal(result.outreachReady, false);
   assert.equal(result.contactRoutes[0]?.phone, '212-228-9300');
@@ -96,9 +106,9 @@ test('Canvas workflow discovers changing property IDs from catalogue links and c
     ['https://canvaspg.com/js/canvas/singlelisting.js', "fetch('https://mc.wlep1.com/api/ajax/canvas/single?propertyid=' + id)"],
     ['https://mc.wlep1.com/api/ajax/canvas/single?propertyid=999', JSON.stringify(fixture)],
   ]); let calls = 0;
-  const service = new BrokerEnrichment({cacheDir, directOnly: true, fetch: async url => {calls++; assert.ok(pages.has(String(url))); return new Response(pages.get(String(url))!);}});
-  const first = await service.run(input);
+  const fetch: typeof globalThis.fetch = async url => {calls++; assert.ok(pages.has(String(url))); return new Response(pages.get(String(url))!);};
+  const first = await unpaid(input, {cacheDir, fetch});
   assert.equal(first.resolution, 'leasing_team_verified'); assert.equal(first.outreachReady, true);
   assert.equal(first.agents.length, 0); assert.equal(first.contactRoutes[0]?.sourceUrls.length, 6);
-  const second = await service.run(input); assert.equal(calls, 6); assert.equal(second.attempts.every(row => row.cached), true);
+  const second = await unpaid(input, {cacheDir, fetch}); assert.equal(calls, 6); assert.equal(second.research?.cacheHit, true);
 });

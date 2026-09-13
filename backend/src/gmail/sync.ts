@@ -2,7 +2,7 @@ import type {gmail_v1} from 'googleapis';
 
 import {catchUpTruncated, planSync} from './checkpoint.ts';
 import type {MailboxCheckpoint, SyncPlan} from './checkpoint.ts';
-import {listMessageIds} from './mailbox.ts';
+import {LISTINGS_QUERY, listMessageIds} from './mailbox.ts';
 
 export type MailboxProfile = {
   emailAddress: string;
@@ -30,6 +30,11 @@ export type SyncOptions = {
   extraQuery?: string | undefined;
   /** Upper bound on ids returned, so one cycle cannot fetch a whole mailbox. */
   maxMessages?: number | undefined;
+  /**
+   * Scan StreetEasy alerts currently in the inbox instead of history. Already
+   * handled ids stay skipped by the processed-message ledger.
+   */
+  inboxBackfill?: boolean | undefined;
 };
 
 /** The mailbox's own address and current history position. */
@@ -89,7 +94,9 @@ export async function syncMailbox(
 ): Promise<MailboxSync> {
   const now = options.now ?? new Date();
   const profile = await fetchMailboxProfile(gmail);
-  let plan = planSync(checkpoint, now, options.defaultCatchUpDays);
+  let plan: SyncPlan = options.inboxBackfill
+    ? {mode: 'inbox_backfill', reason: 'scan current inbox'}
+    : planSync(checkpoint, now, options.defaultCatchUpDays);
   let historyExpired = false;
   let messageIds: string[] = [];
 
@@ -105,6 +112,11 @@ export async function syncMailbox(
 
   if (plan.mode === 'catch_up') {
     const query = [`newer_than:${plan.newerThanDays}d`, options.extraQuery].filter(Boolean).join(' ');
+    messageIds = await listMessageIds(gmail, query);
+  }
+
+  if (plan.mode === 'inbox_backfill') {
+    const query = [`in:inbox`, LISTINGS_QUERY, options.extraQuery].filter(Boolean).join(' ');
     messageIds = await listMessageIds(gmail, query);
   }
 

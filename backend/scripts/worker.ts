@@ -5,7 +5,6 @@ import process from 'node:process';
 import type {gmail_v1} from 'googleapis';
 
 import {client, db} from '../src/db/index.ts';
-import {BrokerEnrichment} from '../src/enrichment/service.ts';
 import {EnrichmentBudget} from '../src/enrichment/spend.ts';
 import {enrichForPipeline} from '../src/pipeline/agentEnrichment.ts';
 import {getGmailClient, getGmailSendClient} from '../src/gmail/auth.ts';
@@ -24,6 +23,8 @@ import {DATA_DIR} from '../src/paths.ts';
  *   npm run worker                   # poll forever (WORKER_POLL_MS, default 5m)
  *   npm run worker -- --once         # one cycle, then exit
  *   npm run worker -- --status       # print backlog and last-run status, exit
+ *   npm run worker -- --once --backfill-inbox
+ *                                    # import StreetEasy alerts currently in the inbox
  *   npm run worker -- --once --live  # real Gmail sends, redirected to the controlled test recipient
  *
  * One cycle: poll Gmail from the stored checkpoint, route each message to the
@@ -36,8 +37,8 @@ import {DATA_DIR} from '../src/paths.ts';
  * SCOUT_CATCH_UP_DAYS (first-run window, default 2), SCOUT_MESSAGES_PER_CYCLE
  * (default 25), SCOUT_MAILBOX_QUERY (extra Gmail terms for a catch-up),
  * OPENROUTER_MODEL (outreach only), WORKER_POLL_MS, WORKER_LEASE_MS,
- * SCOUT_ENRICHMENT_BUDGET_USD (above 0 switches enrichment to the research
- * agent and caps its spend per process; default 0 keeps the free engine),
+ * SCOUT_ENRICHMENT_BUDGET_USD (caps paid OpenRouter discovery per process;
+ * default 0 uses StreetEasy + Tavily inside enrichWithAgent),
  * SCOUT_RENTER_NAME (signs outgoing mail; unset sends no signature).
  *
  * Dry-run is the default: drafts are composed and recorded as `draft_composed`
@@ -49,6 +50,7 @@ const LEASE_MS = Number(process.env.WORKER_LEASE_MS ?? 600_000);
 const once = process.argv.includes('--once');
 const status = process.argv.includes('--status');
 const live = process.argv.includes('--live');
+const inboxBackfill = process.argv.includes('--backfill-inbox');
 const log = (message: string) => console.error(`[worker] ${message}`);
 
 function requireEnv(name: string): string {
@@ -62,9 +64,10 @@ const store = new PostgresStore({
   gmail: getGmailClient,
   dryRun: !live,
   catchUpDays: Number(process.env.SCOUT_CATCH_UP_DAYS ?? 2),
-  maxMessagesPerSync: Number(process.env.SCOUT_MESSAGES_PER_CYCLE ?? 25),
+  maxMessagesPerSync: inboxBackfill ? undefined : Number(process.env.SCOUT_MESSAGES_PER_CYCLE ?? 25),
   ...(process.env.SCOUT_RENTER_NAME ? {renterName: process.env.SCOUT_RENTER_NAME} : {}),
   ...(process.env.SCOUT_MAILBOX_QUERY ? {extraQuery: process.env.SCOUT_MAILBOX_QUERY} : {}),
+  ...(inboxBackfill ? {inboxBackfill: true} : {}),
   log,
 });
 
@@ -83,21 +86,11 @@ if (live) {
 const outbox = new PostgresOutbox(db);
 let sendClient: Promise<gmail_v1.Gmail> | null = null;
 
-// Two engines. The deterministic one reads the alert's own listing page for
-// the agent's name and the brokerage site for their address, and costs nothing
-// per model token; it is the default. The research agent is more capable and
-// is charged per listing, so it runs only once a spend limit is set for it.
 const agentBudgetUsd = Number(process.env.SCOUT_ENRICHMENT_BUDGET_USD ?? 0);
 const providerKeys = {
   ...(process.env.TAVILY_API_KEY ? {tavilyKey: process.env.TAVILY_API_KEY} : {}),
   ...(process.env.FIRECRAWL_API_KEY ? {firecrawlKey: process.env.FIRECRAWL_API_KEY} : {}),
 };
-
-const enrichment = new BrokerEnrichment({
-  cacheDir: path.join(DATA_DIR, 'enrichment', 'cache'),
-  ...providerKeys,
-  log,
-});
 
 const agentOptions = {
   apiKey: openRouterApiKey,
@@ -107,11 +100,13 @@ const agentOptions = {
   log,
 };
 
-if (agentBudgetUsd > 0) log(`enrichment: research agent, budget $${agentBudgetUsd}`);
+log(agentBudgetUsd > 0
+  ? `enrichment: enrichWithAgent, paid budget $${agentBudgetUsd}`
+  : 'enrichment: enrichWithAgent (StreetEasy + Tavily fallback; set SCOUT_ENRICHMENT_BUDGET_USD for paid discovery)');
 
 const alertDeps: AlertPipelineDeps = {
   store,
-  enrich: input => agentBudgetUsd > 0 ? enrichForPipeline(input, agentOptions) : enrichment.run(input),
+  enrich: input => enrichForPipeline(input, agentOptions),
 };
 
 // Identifies this process in the lease and the run log.

@@ -30,7 +30,7 @@ test('no supplied budget means zero paid requests, even with a key', async () =>
   const {options, requests} = mock(); delete options.budget;
   const result = await enrichWithAgent(input, options);
   assert.equal(requests.length, 0);
-  assert.match(result.notes.join(' '), /Budget stopped request/);
+  assert.match(result.notes.join(' '), /Paid discovery skipped/);
   assert.equal(result.cost.reportedUsd, 0);
 });
 

@@ -9,10 +9,10 @@ import {resolveDirect} from './sources.ts';
 import type {ContactRoute} from './sources.ts';
 import {EnrichmentBudget} from './spend.ts';
 import {findAgentEmail} from './agentContacts.ts';
-import {firecrawlFetcher} from './listingAgents.ts';
+import {findListingAgents, firecrawlFetcher} from './listingAgents.ts';
 import {canonicalListingUrl, candidateListingUrl, readListingPage} from './listingPage.ts';
 import type {ListingPage} from './listingPage.ts';
-import {normalizeAddress, normalizeUnit} from './service.ts';
+import {mentionsStreetAddress, normalizeAddress, normalizeUnit, sameBrokerage} from './service.ts';
 import type {EmailListing} from './service.ts';
 
 const evidenceSchema = z.object({
@@ -228,23 +228,48 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
     cost: {reportedUsd: 0, cacheHit: false, budgetLimitUsd: budget.limitUsd},
     evidencePolicy: 'model_reported_with_provider_citations; human_review_before_outreach',
   };
-  let listingPage: ListingPage | undefined;
-  if (listingUrl) {
-    try {
-      // Rendered, never requested directly: StreetEasy 403s plain requests.
-      const page = await readListingPage(listingUrl, options.fetch ?? firecrawlFetcher({
-        firecrawlKey: options.firecrawlKey,
-        ...(options.log ? {log: options.log} : {}),
-      }));
-      const heading = /^(.*?)\s+#(.+)$/.exec(page.heading ?? '');
-      if (!heading || normalizeAddress(heading[1]!) !== normalizeAddress(input.address)
-        || normalizeUnit(heading[2]!) !== normalizeUnit(input.unit)) throw new Error('Listing page heading does not match the exact address and unit');
-      if (page.price !== undefined && page.price !== input.price) throw new Error('Listing page price conflicts with the input; possible stale listing');
-      listingPage = page;
-      result.listingUrl = page.url;
-      result.notes.push(suppliedUrl ? 'Read supplied listing URL before broker discovery.'
-        : 'Read an address-derived candidate URL and verified the exact listing heading before discovery.');
-    } catch (error) {result.notes.push(`Listing page read failed; falling back to search: ${safeError(error)}`);}
+  const canAffordResearch = () => !budget.haltedReason
+    && budget.reportedUsd + budget.reservedUsd + REQUEST_ALLOWANCE_USD <= budget.limitUsd + 1e-9;
+  async function listingAgentsFallback(reason: string): Promise<void> {
+    result.notes.push(reason);
+    if (!options.firecrawlKey && !options.tavilyKey) return;
+    const found = await findListingAgents(input, {
+      ...(options.firecrawlKey ? {firecrawlKey: options.firecrawlKey} : {}),
+      ...(options.tavilyKey ? {tavilyKey: options.tavilyKey} : {}),
+      ...(options.log ? {log: options.log} : {}),
+      ...(options.fetch ? {fetch: options.fetch} : {}),
+    });
+    result.notes.push(...found.notes);
+    result.listingUrl ??= found.listingUrl;
+    for (const agent of found.agents) {
+      if (agent.brokerage && !sameBrokerage(agent.brokerage, input.brokerage)) {
+        result.notes.push(`Listed by credits ${agent.brokerage}, not ${input.brokerage}`);
+        continue;
+      }
+      if (result.agents.some(existing => existing.name.trim().toLowerCase() === agent.name.trim().toLowerCase())) continue;
+      const source = found.listingUrl ?? input.listingUrl ?? '';
+      result.agents.push({
+        name: agent.name, brokerage: agent.brokerage ?? input.brokerage,
+        listedAddress: input.address, listedUnit: input.unit,
+        attribution: {url: source, excerpt: [agent.name, agent.role, agent.brokerage].filter(Boolean).join(' — '), sourceType: 'listing_page'},
+        id: `agent-${result.agents.length + 1}`, attributionStatus: 'source_cited',
+        email: agent.email ? {value: agent.email, evidence: {url: agent.sources.at(-1) ?? source, excerpt: agent.context ?? agent.email, sourceType: 'broker_profile'}} : null,
+        phone: agent.phone ? {value: agent.phone, evidence: {url: agent.sources.at(-1) ?? source, excerpt: agent.context ?? agent.phone, sourceType: 'broker_profile'}} : null,
+        notes: [],
+      });
+    }
+    if (result.agents.some(agent => agent.attributionStatus === 'source_cited')) result.listingStatus = 'named_brokers';
+  }
+  async function lookupMissingEmails(): Promise<void> {
+    if (!options.tavilyKey) return;
+    for (const agent of result.agents.filter(row => row.attributionStatus !== 'needs_review')) {
+      if (agent.email) continue;
+      const lookup = await findAgentEmail({name: agent.name, brokerage: agent.brokerage || input.brokerage}, {
+        apiKey: options.tavilyKey, ...(options.firecrawlKey ? {firecrawlKey: options.firecrawlKey} : {}), ...(options.log ? {log: options.log} : {}),
+      });
+      agent.notes.push(lookup.note);
+      if (lookup.email) agent.email = lookup.email;
+    }
   }
   // Direct adapters cost no model/search credits. They supplement discovery; an
   // office route never terminates the search for named co-brokers.
@@ -261,6 +286,31 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
           phone: route.phone ? {value: route.phone, evidence: {url: route.sourceUrls.at(-1) ?? '', excerpt: route.evidence, sourceType: 'company_page'}} : null}));
       }
     } catch (error) {result.notes.push(`Direct lookup failed: ${safeError(error)}`);}
+  }
+  if (!canAffordResearch()) {
+    await listingAgentsFallback('Paid discovery skipped; using StreetEasy + Tavily listing-agent fallback.');
+    await lookupMissingEmails();
+    result.execution = result.directContacts.length || result.agents.length ? 'completed' : 'partial';
+    return result;
+  }
+  let listingPage: ListingPage | undefined;
+  if (listingUrl) {
+    try {
+      // Rendered, never requested directly: StreetEasy 403s plain requests.
+      const page = await readListingPage(listingUrl, options.fetch ?? firecrawlFetcher({
+        firecrawlKey: options.firecrawlKey,
+        ...(options.log ? {log: options.log} : {}),
+      }));
+      const heading = /^(.*?)\s+#(.+)$/.exec(page.heading ?? '');
+      if (!heading
+        || (!mentionsStreetAddress(heading[1]!, input.address) && !mentionsStreetAddress(input.address, heading[1]!))
+        || normalizeUnit(heading[2]!) !== normalizeUnit(input.unit)) throw new Error('Listing page heading does not match the exact address and unit');
+      if (page.price !== undefined && page.price !== input.price) throw new Error('Listing page price conflicts with the input; possible stale listing');
+      listingPage = page;
+      result.listingUrl = page.url;
+      result.notes.push(suppliedUrl ? 'Read supplied listing URL before broker discovery.'
+        : 'Read an address-derived candidate URL and verified the exact listing heading before discovery.');
+    } catch (error) {result.notes.push(`Listing page read failed; falling back to search: ${safeError(error)}`);}
   }
   async function research<T extends z.ZodType>(stage: ResearchStage, prompt: string, schema: T): Promise<{data: z.infer<T>; citations: Citation[]; raw: ChatCompletion}> {
     options.log?.(`${input.address} #${input.unit}: ${stage} (${result.model})`);
@@ -337,8 +387,10 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
     retainDiscovery(discovery.data, discovery.citations);
     await options.save?.('discovery', result, discovery.raw);
   } catch (error) {
-    result.execution = result.directContacts.length ? 'partial' : 'error';
     result.notes.push(`Discovery failed: ${safeError(error)}`);
+    await listingAgentsFallback('Paid discovery failed; using StreetEasy + Tavily listing-agent fallback.');
+    await lookupMissingEmails();
+    result.execution = result.directContacts.length || result.agents.length ? 'completed' : 'error';
     return result;
   }
   // Enforce recovery in code instead of trusting the model to spend its second
@@ -355,7 +407,10 @@ async function runAgent(input: EmailListing, options: AgentOptions): Promise<Age
       discoveryIncomplete = true;
       result.notes.push(`Discovery recovery incomplete; retained existing candidates: ${safeError(error)}`);
     }
-    if (!result.agents.some(a => a.attributionStatus !== 'needs_review')) result.listingStatus = 'unresolved';
+    if (!result.agents.some(a => a.attributionStatus !== 'needs_review')) {
+      result.listingStatus = 'unresolved';
+      await listingAgentsFallback('Paid discovery found no supported broker; using StreetEasy + Tavily listing-agent fallback.');
+    }
   }
   // Direct lookup first: search the agent's name with the brokerage and read
   // the email off the closest page. No model call; when every supported broker

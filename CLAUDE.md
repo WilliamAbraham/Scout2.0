@@ -31,6 +31,7 @@ npm run inspect -w backend -- <messageId>  # dump one raw message (add --full fo
 npm run survey -w backend -- --offline     # shape/stats report across the cached corpus
 npm run probe -w backend -- <url> <selector...>  # inspect live DOM via Playwright (HEADLESS=0 to watch)
 npm run worker -w backend -- --once        # one full cycle: Gmail -> Postgres -> enrich -> draft (dry-run; see docs/backend/worker-operations.md)
+npm run worker -w backend -- --once --backfill-inbox  # import inbox StreetEasy alerts; skips processed_messages ids
 npm run worker:status                      # backlog, last run, blocked work
 npm run outreach:reconsent                 # add gmail.send to the local OAuth token
 npm run outreach:send-test                 # send one test email to williamja100@gmail.com
@@ -77,7 +78,7 @@ Two enums (`pursuit_stage`, `needs_human_reason`) are the frontend contract: eve
 
 The enrichment service (below) deliberately has no tables here: it returns contacts and writes nothing. `pursuits.contact_snapshot` (jsonb) is where outreach reads them from — also the honest record of who the agent actually emailed, which must not change when a brokerage page is re-scraped months later. Persisting enrichment results is a later, additive migration.
 
-**Enrichment** is implemented as a standalone service in `backend/src/enrichment/service.ts`, with `backend/scripts/enrichListing.ts` as its CLI. It prefers Tavily search when `TAVILY_API_KEY` is configured and uses Firecrawl for rendering/structured extraction and fallback search. It preserves all supported co-agents, verifies listing identity and contact evidence, and keeps index-only matches in review candidates. It does not send messages or update the database. See `docs/broker-enrichment.md` for input/output contracts, operational bounds and validation; `docs/broker-enrichment-findings.docx` contains the research report. `names.ts` retains the original design plan, including future campaign-date and batch-persistence requirements. Existing Playwright utilities remain available for site-specific investigation.
+**Enrichment** has one entry point: `enrichWithAgent()` in `backend/src/enrichment/agent.ts`, with `backend/scripts/enrichAgent.ts` as its CLI (`npm run enrich`). The worker always calls it through `enrichForPipeline`. Paid OpenRouter discovery runs when `SCOUT_ENRICHMENT_BUDGET_USD` is above zero; at the default `$0` the same function uses StreetEasy + Tavily (`findListingAgents`) and reviewed direct adapters. It does not send messages or update the database. See `docs/enrichment/openrouter-agent.md` and `docs/broker-enrichment.md` for contracts and bounds. `names.ts` retains the original design plan, including future campaign-date and batch-persistence requirements. Existing Playwright utilities remain available for site-specific investigation.
 
 `backend/src/paths.ts` derives `REPO_ROOT`/`DATA_DIR` from `import.meta.url` so scripts behave the same regardless of invocation cwd. Everything generated (`data/`) lives outside both workspaces so either can read it, and is gitignored.
 

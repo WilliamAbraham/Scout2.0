@@ -3,9 +3,11 @@ import {mkdtemp, rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import test from 'node:test';
-import {BrokerEnrichment, parseEmailListing} from './service.ts';
+import {parseEmailListing} from './service.ts';
 import {findListingAgents} from './listingAgents.ts';
+import {EnrichmentBudget} from './spend.ts';
 import {processListingAlert} from '../pipeline/alert.ts';
+import {enrichForPipeline} from '../pipeline/agentEnrichment.ts';
 
 const input = parseEmailListing({address: '620 East 6th Street', unit: '9A', price: 6995, bedrooms: 3, bathrooms: 2,
   brokerage: 'FIND Real Estate', city: 'New York', listingUrl: 'https://streeteasy.com/rental/123'});
@@ -94,6 +96,21 @@ test('a broker directory listing the agent under another entity still counts', a
   assert.match(found.notes.join(' '), /corroborated by market, not by FIND Real Estate/);
 });
 
+test('a profile that prints the phone after a long bio still counts', async () => {
+  // REAL NY puts Luke Joyce's phones in a sidebar. Tavily's text starts with
+  // his bio, so the numbers sit ~680 characters after his name — past the
+  // old 600-character window, still on his own page.
+  const bio = 'Licensed Real Estate Salesperson at FIND Real Estate. '.repeat(12);
+  const {fetcher} = providers({search: [{
+    url: 'https://findrealestate.com/team/fatma-kara',
+    title: 'Fatma Kara',
+    content: `Fatma Kara ${bio} (609) 906-8403 (917) 261-2534 fatma@findrealestate.com`,
+  }]});
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.equal(found.agents[0]?.phone, '(609) 906-8403');
+  assert.equal(found.agents[0]?.email, 'fatma@findrealestate.com');
+});
+
 test('a search result that never names the agent supplies nothing', async () => {
   const {fetcher} = providers({search: [{
     url: 'https://findrealestate.com/team', title: 'Our team',
@@ -101,6 +118,19 @@ test('a search result that never names the agent supplies nothing', async () => 
   }]});
   const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
   assert.equal(found.agents[0]?.email, null);
+});
+
+test('a StreetEasy address that adds city and ZIP is still this apartment', async () => {
+  const {fetcher, calls} = providers({
+    listing: {...roster, address: '620 East 6th Street, New York, NY 10009'},
+    search: [{
+      url: 'https://findrealestate.com/team/fatma-kara', title: 'Fatma Kara',
+      content: 'Fatma Kara, Licensed Real Estate Salesperson at FIND Real Estate. fatma@findrealestate.com',
+    }],
+  });
+  const found = await findListingAgents(input, {fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k'});
+  assert.deepEqual(found.agents.map(agent => agent.name), ['Fatma Kara']);
+  assert.match(calls[1]!, /^search:"Fatma Kara" FIND Real Estate/);
 });
 
 test('a different apartment or a company account cannot become the listing agent', async () => {
@@ -122,13 +152,30 @@ test('an unreadable listing reports why instead of throwing', async () => {
   assert.match(found.notes.join(' '), /Could not read the listing.*402/);
 });
 
+test('unpaid enrichWithAgent uses the StreetEasy listing-agent fallback', async t => {
+  const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'scout-listing-'));
+  t.after(() => rm(cacheDir, {recursive: true, force: true}));
+  const {fetcher} = providers({search: [{
+    url: 'https://findrealestate.com/team/fatma-kara', title: 'Fatma Kara',
+    content: 'Fatma Kara, Licensed Real Estate Salesperson at FIND Real Estate. Reach her at fatma@findrealestate.com or 212-555-0134.',
+  }]});
+  const result = await enrichForPipeline(input, {
+    apiKey: 'unused', budget: new EnrichmentBudget(0), cacheDir, fetch: fetcher, firecrawlKey: 'k', tavilyKey: 'k',
+  });
+  assert.equal(result.research?.engine, 'enrichWithAgent');
+  assert.deepEqual(result.agents.map(agent => agent.name), ['Fatma Kara']);
+  assert.equal(result.agents[0]?.email, 'fatma@findrealestate.com');
+  assert.match(result.issues.join(' '), /Paid discovery skipped/);
+});
+
 test('a roster credited to another firm is refused by the service', async t => {
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'scout-listing-'));
   t.after(() => rm(cacheDir, {recursive: true, force: true}));
   const {fetcher} = providers({listing: {...roster,
     agents: [{...roster.agents[0]!, brokerage: 'Other Realty'}]}});
-  const service = new BrokerEnrichment({cacheDir, fetch: fetcher, sleep: async () => {}, firecrawlKey: 'k'});
-  const result = await service.run(input);
+  const result = await enrichForPipeline(input, {
+    apiKey: 'unused', budget: new EnrichmentBudget(0), cacheDir, fetch: fetcher, firecrawlKey: 'k',
+  });
   assert.deepEqual(result.agents, []);
   assert.match(result.issues.join(' '), /credits Other Realty, not FIND Real Estate/);
 });
@@ -137,12 +184,13 @@ test('name-only discovery survives alert persistence without authorizing email',
   const cacheDir = await mkdtemp(path.join(os.tmpdir(), 'scout-listing-'));
   t.after(() => rm(cacheDir, {recursive: true, force: true}));
   const {fetcher} = providers();
-  const service = new BrokerEnrichment({cacheDir, fetch: fetcher, sleep: async () => {}, firecrawlKey: 'k'});
   let saved: Record<string, unknown> | undefined;
   const outcome = await processListingAlert('user', {messageId: 'msg', receivedAt: new Date()}, {
     address: `${input.address} #${input.unit}`, price: input.price, bedrooms: input.bedrooms, bathrooms: input.bathrooms,
     brokerage: input.brokerage, listingUrl: input.listingUrl!, rentalId: '123',
-  }, {enrich: value => service.run(value), store: {
+  }, {enrich: value => enrichForPipeline(value, {
+    apiKey: 'unused', budget: new EnrichmentBudget(0), cacheDir, fetch: fetcher, firecrawlKey: 'k',
+  }), store: {
     ingestListing: async () => ({listingId: 'l', userListingId: 'ul', pursuitId: 'p', isMatch: true, isNew: true, needsEnrichment: true}),
     saveEnrichment: async (_user, _pursuit, snapshot, summary) => {assert.equal(snapshot, null); saved = summary;},
     noteEnrichmentDeferred: async () => {assert.fail('Recovered names must not disappear into a retry');},

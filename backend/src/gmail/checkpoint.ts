@@ -15,7 +15,9 @@ export type SyncPlan =
   /** Ask Gmail for everything that changed since `historyId`. */
   | {mode: 'incremental'; historyId: string}
   /** Search a bounded window instead, because history is missing or stale. */
-  | {mode: 'catch_up'; newerThanDays: number; reason: string};
+  | {mode: 'catch_up'; newerThanDays: number; reason: string}
+  /** Scan StreetEasy alerts still sitting in the inbox, ignoring the history cursor. */
+  | {mode: 'inbox_backfill'; reason: string};
 
 /**
  * Google's retention is about a week; stopping short of it keeps a run that

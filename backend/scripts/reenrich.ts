@@ -18,9 +18,11 @@ import {and, eq, ne} from 'drizzle-orm';
 import {client, db} from '../src/db/index.ts';
 import {listings, userListings} from '../src/db/schema/listings.ts';
 import {pursuits} from '../src/db/schema/pursuits.ts';
-import {BrokerEnrichment, parseEmailListing} from '../src/enrichment/service.ts';
+import {parseEmailListing} from '../src/enrichment/service.ts';
 import type {EnrichmentResult} from '../src/enrichment/service.ts';
+import {EnrichmentBudget} from '../src/enrichment/spend.ts';
 import {splitBrokerage} from '../src/pipeline/brokerage.ts';
+import {enrichForPipeline} from '../src/pipeline/agentEnrichment.ts';
 import {contactSnapshotFromEnrichment} from '../src/pipeline/contacts.ts';
 import {PostgresStore} from '../src/pipeline/postgresStore.ts';
 import {DATA_DIR} from '../src/paths.ts';
@@ -59,7 +61,9 @@ console.log(`Replaying enrichment for ${blocked.length} parked ${blocked.length 
 const store = new PostgresStore({db, gmail: () => {throw new Error('Re-enrichment never reads the mailbox');}, dryRun: true,
   log: message => console.error(`[reenrich] ${message}`)});
 const options = {
-  cacheDir: path.join(DATA_DIR, 'enrichment', 'cache'), refresh,
+  apiKey: process.env.OPENROUTER_API_KEY ?? '',
+  budget: new EnrichmentBudget(Number(process.env.SCOUT_ENRICHMENT_BUDGET_USD ?? 0)),
+  cacheDir: path.join(DATA_DIR, 'enrichment', 'agent-cache'), refresh,
   ...(process.env.TAVILY_API_KEY ? {tavilyKey: process.env.TAVILY_API_KEY} : {}),
   ...(process.env.FIRECRAWL_API_KEY ? {firecrawlKey: process.env.FIRECRAWL_API_KEY} : {}),
 };
@@ -77,8 +81,7 @@ async function worker(): Promise<void> {
         bedrooms: row.bedrooms, bathrooms: row.bathrooms,
         brokerage: brokerageName || 'Unknown', brokerageOfficeAddress: officeAddress, city: 'New York',
       });
-      // A separate instance per listing: the service refuses concurrent reuse.
-      result = await new BrokerEnrichment({...options, log: message => console.error(`[${row.rentalId}] ${message}`)}).run(input);
+      result = await enrichForPipeline(input, {...options, log: message => console.error(`[${row.rentalId}] ${message}`)});
     } catch (error) {
       failed++;
       console.log(`✗ ${label}\n    ${error instanceof Error ? error.message : String(error)}`);

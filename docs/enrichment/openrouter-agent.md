@@ -2,7 +2,7 @@
 
 ## Default pipeline and 12-listing evaluation
 
-The user selected `enrichWithAgent()` as the default. The continuous worker now invokes it through `enrichForPipeline`, and the one-email runner and CLI share `agentResultForPipeline` for accepted results. The CLI retains raw results in `results.json` and writes accepted results to `pipeline-results.json`; stdout uses the accepted shape. `npm run enrich` and `npm run enrich:agent` run this path; `npm run enrich:legacy` runs the old service.
+`enrichWithAgent()` is the only enrichment entry point. The continuous worker, one-email runner, sample CLI and re-enrich script invoke it through `enrichForPipeline` / `agentResultForPipeline`. The CLI retains raw results in `results.json` and writes accepted results to `pipeline-results.json`; stdout uses the accepted shape. When the OpenRouter budget is `$0`, the same function uses StreetEasy + Tavily (`findListingAgents`) and reviewed direct adapters instead of paid discovery.
 
 The [approved 12-listing test](active-12-agent-test-2026-09-12.md) cost $0.087395756 in OpenRouter usage and returned accepted named agents on only 2 listings. Brokerage labels and a conflicting-brokerage candidate were rejected during offline mapping of those exact responses. Ten source reads were blocked by HTTP 403, including the fresh Fatma test. General office contacts do not establish that a listing is company-only. These results supersede any assumption that this path reliably identifies every listing's agents.
 

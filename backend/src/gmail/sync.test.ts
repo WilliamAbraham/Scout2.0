@@ -83,3 +83,20 @@ test('a cycle never fetches more than its message bound', async () => {
   const result = await syncMailbox(gmail, {historyId: '100', lastSyncedAt: daysAgo(1)}, {now: NOW, maxMessages: 2});
   assert.deepEqual(result.messageIds, ['a', 'b']);
 });
+
+test('an inbox backfill searches current StreetEasy mail and ignores a fresh history cursor', async () => {
+  const {gmail, queries} = fakeGmail({
+    history: [{id: 'should-not-run'}],
+    listed: ['inbox-1', 'inbox-2'],
+  });
+  const result = await syncMailbox(gmail, {historyId: '100', lastSyncedAt: daysAgo(1)}, {
+    now: NOW,
+    inboxBackfill: true,
+  });
+
+  assert.equal(result.plan.mode, 'inbox_backfill');
+  assert.deepEqual(result.messageIds, ['inbox-1', 'inbox-2']);
+  assert.deepEqual(queries, ['in:inbox from:noreply@email.streeteasy.com']);
+  assert.equal(result.historyId, '99999');
+  assert.equal(result.truncated, false);
+});

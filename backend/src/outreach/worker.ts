@@ -25,7 +25,7 @@ export type SyncReport = {
   /** The Gmail history id to persist once the cycle completes. */
   checkpoint: string;
   mailbox: string;
-  mode: 'incremental' | 'catch_up';
+  mode: 'incremental' | 'catch_up' | 'inbox_backfill';
   /** The catch-up window did not reach back to the last successful sync. */
   truncated: boolean;
   historyExpired: boolean;

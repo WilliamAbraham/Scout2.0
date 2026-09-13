@@ -13,7 +13,7 @@
  * often enough that the free path is not worth the ambiguity it introduces.
  * Every read here goes through Firecrawl.
  */
-import {brokerageIdentity, normalizeAddress, normalizeUnit} from './service.ts';
+import {brokerageIdentity, mentionsStreetAddress, normalizeAddress, normalizeUnit} from './service.ts';
 import type {EmailListing} from './service.ts';
 
 export interface AgentContact {
@@ -191,9 +191,11 @@ async function contactFor(agent: AgentContact, city: string, options: LookupOpti
       if (!haystack.includes(normalizeAddress(agent.name)) || !pass.corroborate(haystack)) continue;
 
       // Only what sits near their name. A directory page lists many people, and
-      // the first phone number on it belongs to whoever is at the top.
+      // the first phone number on it belongs to whoever is at the top. A profile
+      // still needs room for a long bio before the sidebar numbers (Luke
+      // Joyce's REAL NY phones sit ~680 characters after his name).
       const at = normalizeAddress(result.text).indexOf(normalizeAddress(agent.name));
-      const near = result.text.slice(Math.max(0, at - 300), at + 600);
+      const near = result.text.slice(Math.max(0, at - 300), at + 1200);
       const emails = [...new Set(near.match(EMAIL) ?? [])].map(value => value.toLowerCase())
         .filter(value => !/\.(png|jpe?g|gif|webp|svg)$/.test(value));
       const email = emails.find(value => personalEmail(value, agent.name));
@@ -236,7 +238,9 @@ export async function findListingAgents(input: EmailListing, options: LookupOpti
   const extracted = isObject(page.json) ? page.json : {};
 
   // The page has to be this apartment before its roster means anything.
-  if (typeof extracted.address === 'string' && normalizeAddress(extracted.address) !== normalizeAddress(input.address)) {
+  if (typeof extracted.address === 'string'
+      && !mentionsStreetAddress(extracted.address, input.address)
+      && !mentionsStreetAddress(input.address, extracted.address)) {
     return {listingUrl, availability: null, agents: [], notes: [`Listing page is ${extracted.address}, not ${input.address}`]};
   }
   if (typeof extracted.unit === 'string' && normalizeUnit(extracted.unit) !== normalizeUnit(input.unit)) {

@@ -1,10 +1,22 @@
 # Scout: current engineering context
 
-Updated 2026-09-12. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
+Updated 2026-09-13. Dashboard iteration started from `f6f8adf`; earlier source review used `822db17` on `origin/main`. Code inspection is distinguished below from runtime verification. Start with [project.md](project.md) for product intent.
+
+## Inbox listing backfill — 2026-09-13
+
+`npm run worker -- --once --backfill-inbox` imports StreetEasy alerts currently in the mailbox. Incremental sync from `gmail_accounts.history_id` only sees mail newer than the cursor, so a backfill searches `in:inbox from:noreply@email.streeteasy.com` instead. Dedup stays on the existing ledger: `processed_messages` skips ids already `done` or `exhausted`, listings upsert on `rental_id`, and a clean cycle still writes `history_id`. There is no separate last-message-id column. The older `importListings.ts` script only upserts cached `data/raw` files into `listings` and does not write the ledger or per-user feed.
+
+A 2026-09-13 preview of `williamsaibroker@gmail.com` found 120 StreetEasy inbox alerts, 9 already in `processed_messages`, 204 listing rows, and a history cursor that last incremental-synced zero new messages.
+
+The worker always uses `enrichWithAgent` via `enrichForPipeline`. At `SCOUT_ENRICHMENT_BUDGET_USD=0` (the default) it skips paid OpenRouter discovery and uses StreetEasy + Tavily (`findListingAgents`) plus reviewed direct adapters. The old `BrokerEnrichment` directory crawl is deleted; it used to Tavily-search `"address" "unit" "directory person"` for up to 12 roster names when StreetEasy named no one at the alert's firm. An aborted 2026-09-13 inbox backfill showed Firecrawl working (788 of 1000 credits remaining) and was stopped during that roster walk, not by a provider outage.
+
+`findListingAgents` previously required the extracted StreetEasy address to equal the alert street exactly, so `448 West 19th Street, New York, NY 10011` discarded Paul Morrissette and Luke Joyce on rental 5155650. It now accepts a page that names the same street with city/ZIP appended, while a different house number still fails.
+
+Tavily contact text is read 300 characters before the name and 1200 after (was 600). A profile that prints phones in a sidebar after a long bio — Luke Joyce on REAL NY, ~680 characters later — is kept; a namesake page that never names the firm is still refused.
 
 ## Brokerage contact visibility — 2026-09-12
 
-Default-agent switch: the user selected `enrichWithAgent()` for future enrichment and approved a live test against all 12 active pursuits. `worker.ts` now calls it through `enrichForPipeline`; `runAlert.ts` and the default enrichment CLI use the same `agentResultForPipeline` mapping. `npm run enrich:legacy` retains `BrokerEnrichment`. The worker pins enrichment to Mini independently of the outreach model and uses `SCOUT_ENRICHMENT_BUDGET_USD` (default zero, shared for the process lifetime). No worker restart or resumption was performed; the user's paused state remains intact.
+Default-agent switch: `enrichWithAgent()` is the only enrichment engine. `worker.ts`, `runAlert.ts`, `enrich:sample`, `reenrich` and `npm run enrich` all use `agentResultForPipeline`. The worker pins enrichment to Mini independently of the outreach model and uses `SCOUT_ENRICHMENT_BUDGET_USD` (default zero, shared for the process lifetime; `$0` is the StreetEasy + Tavily fallback). No worker restart or resumption was performed; the user's paused state remains intact.
 
 The [12-listing report](docs/enrichment/active-12-agent-test-2026-09-12.md) records $0.087395756 OpenRouter spend under the approved $0.25 allowance; separate Tavily/Firecrawl credits were not metered. All 12 were attempted, with 10 complete and 2 partial raw executions. Accepted named agents appeared on only two listings (Javier Cruz/Michael Dallal and Ben Refael). Centennial was explicitly company-only on 115 Mulberry #F4; Canvas supplied an exact-listing team route for #5W, but a conflicting Kleier broker was excluded. Owner input was retained; seven other rosters remained unresolved. Fatma was missed in this fresh run after HTTP 403. The test did not overwrite saved pursuits or the earlier correct Fatma record.
 

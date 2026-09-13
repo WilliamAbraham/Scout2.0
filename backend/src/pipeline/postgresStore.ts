@@ -76,6 +76,8 @@ export type PostgresStoreOptions = {
   catchUpDays?: number | undefined;
   /** Upper bound on messages fetched per cycle, to bound enrichment spend. */
   maxMessagesPerSync?: number | undefined;
+  /** Scan StreetEasy alerts currently in the inbox instead of Gmail history. */
+  inboxBackfill?: boolean | undefined;
   log?: ((message: string) => void) | undefined;
 };
 
@@ -364,6 +366,7 @@ export class PostgresStore implements WorkerStore, AlertStore {
       ...(this.options.catchUpDays === undefined ? {} : {defaultCatchUpDays: this.options.catchUpDays}),
       ...(this.options.extraQuery === undefined ? {} : {extraQuery: this.options.extraQuery}),
       ...(this.options.maxMessagesPerSync === undefined ? {} : {maxMessages: this.options.maxMessagesPerSync}),
+      ...(this.options.inboxBackfill ? {inboxBackfill: true} : {}),
     });
 
     await this.bindMailbox(userId, sync.emailAddress);

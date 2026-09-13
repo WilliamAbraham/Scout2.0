@@ -13,7 +13,6 @@
     "survey": "node scripts/survey.ts",
     "probe": "node scripts/probe.ts",
     "enrich": "node scripts/enrichAgent.ts",
-    "enrich:legacy": "node scripts/enrichListing.ts",
     "test:enrichment": "node --test src/enrichment/*.test.ts",
     "typecheck:enrichment": "tsc -p tsconfig.enrichment.json",
     "typecheck": "tsc",
